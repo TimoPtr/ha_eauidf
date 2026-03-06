@@ -1,11 +1,11 @@
 {
+  "domain": "eauidf",
+  "name": "L'eau d'Ile-de-France",
   "codeowners": ["@TimoPtr"],
   "config_flow": true,
   "documentation": "https://github.com/TimoPtr/ha_eauidf",
-  "domain": "eauidf",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/TimoPtr/ha_eauidf/issues",
-  "name": "L'eau d'Ile-de-France",
   "requirements": ["pyeauidf==0.1.0"],
   "version": "1.0.0"
 }
