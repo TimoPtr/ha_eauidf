@@ -28,7 +28,7 @@ class ContractData:
 
     meter_reading_m3: float
     daily_consumption_l: float
-    last_date: str
+    last_date: date
     is_estimated: bool
 
 
@@ -95,7 +95,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                         data[cid] = ContractData(
                             meter_reading_m3=latest.meter_reading,
                             daily_consumption_l=latest.consumption_liters,
-                            last_date=latest.date.date().isoformat(),
+                            last_date=latest.date.date(),
                             is_estimated=latest.is_estimated,
                         )
                     else:

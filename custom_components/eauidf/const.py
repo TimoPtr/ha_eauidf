@@ -2,6 +2,4 @@
 
 DOMAIN = "eauidf"
 
-CONF_USERNAME = "username"
-CONF_PASSWORD = "password"
 CONF_CONTRACTS = "contracts"

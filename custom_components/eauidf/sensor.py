@@ -28,6 +28,7 @@ class SedifSensorDescription(SensorEntityDescription):
     """Describe a SEDIF sensor."""
 
     value_fn: Callable[[ContractData], Any]
+    has_extra_attributes: bool = False
 
 
 SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
@@ -40,6 +41,7 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         icon="mdi:counter",
         suggested_display_precision=0,
         value_fn=lambda d: d.meter_reading_m3,
+        has_extra_attributes=True,
     ),
     SedifSensorDescription(
         key="daily_consumption",
@@ -50,6 +52,7 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         icon="mdi:water",
         suggested_display_precision=0,
         value_fn=lambda d: d.daily_consumption_l,
+        has_extra_attributes=True,
     ),
     SedifSensorDescription(
         key="last_reading_date",
@@ -125,7 +128,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, str | bool] | None:
         """Return extra state attributes."""
-        if self.entity_description.entity_category is not None:
+        if not self.entity_description.has_extra_attributes:
             return None
         if not self.coordinator.data:
             return None
@@ -133,6 +136,6 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         if contract_data is None:
             return None
         return {
-            "last_reading_date": contract_data.last_date,
+            "last_reading_date": contract_data.last_date.isoformat(),
             "is_estimated": contract_data.is_estimated,
         }
