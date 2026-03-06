@@ -1,8 +1,11 @@
 name: Validate the integration
 
 on:
-  push:
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
