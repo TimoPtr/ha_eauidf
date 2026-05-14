@@ -1,3 +1,16 @@
+[project]
+name = "ha-eauidf"
+requires-python = ">=3.14"
+dependencies = ["pyeauidf==0.2.0"]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-homeassistant-custom-component",
+    "pytest-cov",
+]
+
 [tool.ruff]
 target-version = "py314"
 

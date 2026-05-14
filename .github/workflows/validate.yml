@@ -53,7 +53,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install test dependencies
-        run: pip install -r requirements_test.txt
+        run: pip install ".[test]"
 
       - name: Run tests
         run: pytest tests/ --cov --cov-report=term-missing
