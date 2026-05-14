@@ -65,7 +65,6 @@ The amount of water consumed during the last reported day.
 | Property | Value |
 |---|---|
 | **Unit** | L (liters) |
-| **Device class** | Water |
 | **State class** | Measurement |
 | **Icon** | mdi:water |
 

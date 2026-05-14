@@ -46,7 +46,6 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
     SedifSensorDescription(
         key="daily_consumption",
         translation_key="daily_consumption",
-        device_class=SensorDeviceClass.WATER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfVolume.LITERS,
         icon="mdi:water",
