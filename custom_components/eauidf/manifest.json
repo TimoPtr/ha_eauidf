@@ -6,6 +6,6 @@
   "documentation": "https://github.com/TimoPtr/ha_eauidf",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/TimoPtr/ha_eauidf/issues",
-  "requirements": ["pyeauidf==0.2.0"],
+  "requirements": ["pyeauidf==1.0.0"],
   "version": "1.0.1"
 }
