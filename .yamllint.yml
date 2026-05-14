@@ -1,0 +1,8 @@
+---
+extends: default
+
+rules:
+  # SHA-pinned action references plus their version comment commonly
+  # exceed 80 columns and cannot be wrapped.
+  line-length:
+    max: 120

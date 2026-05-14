@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,15 +11,19 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfVolume
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_CONTRACTS, DOMAIN
 from .coordinator import ContractData, SedifCoordinator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,20 +76,17 @@ async def async_setup_entry(
     coordinator: SedifCoordinator = hass.data[DOMAIN][entry.entry_id]
     contracts = entry.data[CONF_CONTRACTS]
 
-    entities: list[SedifSensor] = []
-    for contract in contracts:
-        for description in SENSOR_TYPES:
-            entities.append(
-                SedifSensor(
-                    coordinator=coordinator,
-                    description=description,
-                    contract_id=contract["id"],
-                    contract_number=contract["number"],
-                    entry_id=entry.entry_id,
-                )
-            )
-
-    async_add_entities(entities)
+    async_add_entities(
+        SedifSensor(
+            coordinator=coordinator,
+            description=description,
+            contract_id=contract["id"],
+            contract_number=contract["number"],
+            entry_id=entry.entry_id,
+        )
+        for contract in contracts
+        for description in SENSOR_TYPES
+    )
 
 
 class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
@@ -103,6 +103,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         contract_number: str,
         entry_id: str,
     ) -> None:
+        """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
         self._contract_id = contract_id
