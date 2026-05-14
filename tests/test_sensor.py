@@ -13,7 +13,9 @@ from tests.conftest import MOCK_CONTRACT_ID
 PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
 
-async def _setup_integration(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def _setup_integration(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.get_daily_consumption.return_value = [mock_record]
@@ -30,7 +32,9 @@ def _get_state(hass: HomeAssistant, mock_config_entry, key: str):
     return hass.states.get(entity_id)
 
 
-async def test_all_sensors_created(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_all_sensors_created(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     for key in ("meter_reading", "daily_consumption", "last_reading_date"):
@@ -38,7 +42,9 @@ async def test_all_sensors_created(hass: HomeAssistant, mock_config_entry, mock_
         assert state is not None, f"Sensor {key} was not created"
 
 
-async def test_meter_reading_state(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_meter_reading_state(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "meter_reading")
 
@@ -48,7 +54,9 @@ async def test_meter_reading_state(hass: HomeAssistant, mock_config_entry, mock_
     assert state.attributes["state_class"] == SensorStateClass.TOTAL_INCREASING
 
 
-async def test_daily_consumption_state(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_daily_consumption_state(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "daily_consumption")
 
@@ -58,7 +66,9 @@ async def test_daily_consumption_state(hass: HomeAssistant, mock_config_entry, m
     assert "device_class" not in state.attributes
 
 
-async def test_last_reading_date_state(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_last_reading_date_state(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "last_reading_date")
 
@@ -66,7 +76,9 @@ async def test_last_reading_date_state(hass: HomeAssistant, mock_config_entry, m
     assert state.attributes["device_class"] == SensorDeviceClass.DATE
 
 
-async def test_extra_attributes(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_extra_attributes(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "meter_reading")
 
@@ -74,7 +86,9 @@ async def test_extra_attributes(hass: HomeAssistant, mock_config_entry, mock_rec
     assert state.attributes["is_estimated"] is False
 
 
-async def test_sensor_unavailable_when_no_data(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_sensor_unavailable_when_no_data(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
@@ -86,7 +100,9 @@ async def test_sensor_unavailable_when_no_data(hass: HomeAssistant, mock_config_
     assert state.state in ("unknown", "unavailable", "None")
 
 
-async def test_unload_entry(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_unload_entry(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     assert mock_config_entry.entry_id in hass.data[DOMAIN]
 

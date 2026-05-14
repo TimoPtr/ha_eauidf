@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -22,8 +21,12 @@ PATCH_CLIENT = "custom_components.eauidf.config_flow.EauIDFClient"
 
 def _make_client(contract_ids: list | None = None) -> MagicMock:
     client = MagicMock()
-    client.get_contracts.return_value = contract_ids if contract_ids is not None else [MOCK_CONTRACT_ID]
-    client.get_contract_details.return_value = {"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
+    client.get_contracts.return_value = (
+        contract_ids if contract_ids is not None else [MOCK_CONTRACT_ID]
+    )
+    client.get_contract_details.return_value = {
+        "contrat": {"Name": MOCK_CONTRACT_NUMBER}
+    }
     return client
 
 
@@ -118,7 +121,9 @@ async def test_user_step_no_contracts(hass: HomeAssistant) -> None:
     assert result["errors"]["base"] == "no_contracts"
 
 
-async def test_user_step_already_configured(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_user_step_already_configured(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     with patch(PATCH_CLIENT, return_value=_make_client()):
@@ -143,7 +148,9 @@ async def test_reauth_shows_form(hass: HomeAssistant, mock_config_entry) -> None
     assert result["step_id"] == "reauth_confirm"
 
 
-async def test_reauth_success(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_reauth_success(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     coord_client = MagicMock()
@@ -151,7 +158,10 @@ async def test_reauth_success(hass: HomeAssistant, mock_config_entry, mock_recor
 
     with (
         patch(PATCH_CLIENT, return_value=_make_client()),
-        patch("custom_components.eauidf.coordinator.EauIDFClient", return_value=coord_client),
+        patch(
+            "custom_components.eauidf.coordinator.EauIDFClient",
+            return_value=coord_client,
+        ),
     ):
         result = await mock_config_entry.start_reauth_flow(hass)
         result = await hass.config_entries.flow.async_configure(

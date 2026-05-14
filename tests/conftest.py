@@ -11,6 +11,14 @@ from custom_components.eauidf.const import CONF_CONTRACTS, DOMAIN
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(
+    enable_custom_integrations: None,
+) -> None:
+    """Enable custom integrations for all tests."""
+
+
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "secret"
 MOCK_CONTRACT_ID = "CONTRACT_001"

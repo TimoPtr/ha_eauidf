@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -14,7 +13,9 @@ from tests.conftest import MOCK_CONTRACT_ID
 PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
 
-async def test_fetch_success(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_fetch_success(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.get_daily_consumption.return_value = [mock_record]
@@ -39,8 +40,10 @@ async def test_fetch_auth_error_raises(hass: HomeAssistant, mock_config_entry) -
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
-        with pytest.raises(ConfigEntryAuthFailed):
-            await coordinator.async_refresh()
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
 
 
 async def test_fetch_api_error_raises(hass: HomeAssistant, mock_config_entry) -> None:
@@ -50,22 +53,30 @@ async def test_fetch_api_error_raises(hass: HomeAssistant, mock_config_entry) ->
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
-        with pytest.raises(UpdateFailed):
-            await coordinator.async_refresh()
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert isinstance(coordinator.last_exception, UpdateFailed)
 
 
-async def test_fetch_unexpected_error_raises(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_fetch_unexpected_error_raises(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login.side_effect = RuntimeError("unexpected")
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
-        with pytest.raises(UpdateFailed):
-            await coordinator.async_refresh()
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert isinstance(coordinator.last_exception, UpdateFailed)
 
 
-async def test_fetch_empty_records_raises(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_fetch_empty_records_raises(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
     """When all contracts return no records, UpdateFailed is raised."""
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
@@ -73,11 +84,15 @@ async def test_fetch_empty_records_raises(hass: HomeAssistant, mock_config_entry
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
-        with pytest.raises(UpdateFailed):
-            await coordinator.async_refresh()
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert isinstance(coordinator.last_exception, UpdateFailed)
 
 
-async def test_client_closed_on_success(hass: HomeAssistant, mock_config_entry, mock_record) -> None:
+async def test_client_closed_on_success(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.get_daily_consumption.return_value = [mock_record]
@@ -96,7 +111,6 @@ async def test_client_closed_on_error(hass: HomeAssistant, mock_config_entry) ->
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
-        with pytest.raises(UpdateFailed):
-            await coordinator.async_refresh()
+        await coordinator.async_refresh()
 
     client.close.assert_called_once()

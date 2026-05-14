@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, timedelta
-from typing import Any
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pyeauidf import EauIDFClient
 from pyeauidf.client import AuthenticationError, EauIDFError
 
 from .const import CONF_CONTRACTS, DOMAIN
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
     config_entry: ConfigEntry
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the SEDIF coordinator."""
         super().__init__(
             hass,
             _LOGGER,
@@ -62,13 +65,11 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         except AuthenticationError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except EauIDFError as err:
-            raise UpdateFailed(
-                f"Error fetching SEDIF data: {err}"
-            ) from err
+            msg = f"Error fetching SEDIF data: {err}"
+            raise UpdateFailed(msg) from err
         except Exception as err:
-            raise UpdateFailed(
-                f"Unexpected error fetching SEDIF data: {err}"
-            ) from err
+            msg = f"Unexpected error fetching SEDIF data: {err}"
+            raise UpdateFailed(msg) from err
 
     @staticmethod
     def _fetch_all(
@@ -85,7 +86,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 cid = contract["id"]
                 number = contract["number"]
                 try:
-                    end = date.today()
+                    end = datetime.now(UTC).date()
                     start = end - timedelta(days=7)
                     records = client.get_daily_consumption(
                         contract_id=cid, start_date=start, end_date=end
@@ -106,13 +107,10 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 except AuthenticationError:
                     raise
                 except Exception:
-                    _LOGGER.exception(
-                        "Failed to fetch data for contract %s", number
-                    )
+                    _LOGGER.exception("Failed to fetch data for contract %s", number)
             if not data and contracts:
-                raise EauIDFError(
-                    "Failed to fetch data for any contract"
-                )
+                msg = "Failed to fetch data for any contract"
+                raise EauIDFError(msg)
             return data
         finally:
             client.close()
