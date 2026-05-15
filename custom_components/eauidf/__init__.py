@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import async_get as async_get_dev_reg
 from pyeauidf import EauIDFClient
 from pyeauidf.client import EauIDFError
@@ -44,7 +44,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: EauIDFConfigEntry) -> b
 
 async def _refresh_contracts(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Refresh contract list from the API and remove stale devices."""
-    session = async_get_clientsession(hass)
+    session = async_create_clientsession(hass)
     client = EauIDFClient(
         entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD], session=session
     )
@@ -57,7 +57,7 @@ async def _refresh_contracts(hass: HomeAssistant, entry: ConfigEntry) -> None:
             contrat = details.get("contrat", {})
             number = contrat.get("Name", cid)
             contracts.append({"id": cid, "number": str(number)})
-    except (EauIDFError, OSError):
+    except (EauIDFError, OSError):  # fmt: skip
         _LOGGER.debug("Could not refresh contracts, using cached list")
         return
 

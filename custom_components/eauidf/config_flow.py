@@ -8,7 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from pyeauidf import EauIDFClient
 from pyeauidf.client import AuthenticationError, EauIDFError
 
@@ -44,8 +44,10 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
             except AuthenticationError:
+                _LOGGER.debug("Invalid credentials for %s", user_input[CONF_USERNAME])
                 errors["base"] = "invalid_auth"
             except EauIDFError:
+                _LOGGER.debug("Cannot connect to SEDIF portal", exc_info=True)
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during config flow")
@@ -87,8 +89,13 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_PASSWORD],
                 )
             except AuthenticationError:
+                _LOGGER.debug("Invalid credentials during reauth")
                 errors["base"] = "invalid_auth"
             except EauIDFError:
+                _LOGGER.debug(
+                    "Cannot connect to SEDIF portal during reauth",
+                    exc_info=True,
+                )
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during reauth")
@@ -122,8 +129,13 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                     username, user_input[CONF_PASSWORD]
                 )
             except AuthenticationError:
+                _LOGGER.debug("Invalid credentials during reconfiguration")
                 errors["base"] = "invalid_auth"
             except EauIDFError:
+                _LOGGER.debug(
+                    "Cannot connect to SEDIF portal during reconfiguration",
+                    exc_info=True,
+                )
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during reconfiguration")
@@ -151,7 +163,7 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> list[dict[str, str]]:
         """Validate credentials and return contract list."""
         client = EauIDFClient(
-            username, password, session=async_get_clientsession(self.hass)
+            username, password, session=async_create_clientsession(self.hass)
         )
         try:
             await client.login()

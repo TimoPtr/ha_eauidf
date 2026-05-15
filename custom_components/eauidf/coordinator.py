@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
     async_create_issue,
@@ -68,7 +68,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         contracts = self.config_entry.data[CONF_CONTRACTS]
 
         client = EauIDFClient(
-            username, password, session=async_get_clientsession(self.hass)
+            username, password, session=async_create_clientsession(self.hass)
         )
         try:
             data = await self._fetch_all(client, contracts)
