@@ -102,9 +102,7 @@ async def test_last_reading_date_disabled_by_default(
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     ent_reg = er.async_get(hass)
-    unique_id = (
-        f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
-    )
+    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
     entry = ent_reg.async_get(ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id))
     assert entry is not None
     assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
@@ -116,9 +114,7 @@ async def test_last_reading_date_state(
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     ent_reg = er.async_get(hass)
-    unique_id = (
-        f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
-    )
+    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
     ent_reg.async_update_entity(
         ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id),
         disabled_by=None,

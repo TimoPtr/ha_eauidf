@@ -175,10 +175,14 @@ async def test_reauth_success(
             result["flow_id"],
             {CONF_PASSWORD: "new_password"},
         )
+        await hass.async_block_till_done()
 
     assert result["type"] == "abort"
     assert result["reason"] == "reauth_successful"
     assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+
+    await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
 
 
 async def test_reauth_invalid_auth(hass: HomeAssistant, mock_config_entry) -> None:
@@ -217,9 +221,7 @@ async def test_reauth_cannot_connect(hass: HomeAssistant, mock_config_entry) -> 
     assert result["errors"]["base"] == "cannot_connect"
 
 
-async def test_reconfigure_shows_form(
-    hass: HomeAssistant, mock_config_entry
-) -> None:
+async def test_reconfigure_shows_form(hass: HomeAssistant, mock_config_entry) -> None:
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
@@ -261,16 +263,18 @@ async def test_reconfigure_success(
             result["flow_id"],
             {CONF_PASSWORD: "new_password"},
         )
+        await hass.async_block_till_done()
 
     assert result["type"] == "abort"
     assert result["reason"] == "reconfigure_successful"
     assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
     assert mock_config_entry.data[CONF_CONTRACTS] == MOCK_CONTRACTS
 
+    await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
 
-async def test_reconfigure_invalid_auth(
-    hass: HomeAssistant, mock_config_entry
-) -> None:
+
+async def test_reconfigure_invalid_auth(hass: HomeAssistant, mock_config_entry) -> None:
     mock_config_entry.add_to_hass(hass)
 
     client = MagicMock()
@@ -288,9 +292,7 @@ async def test_reconfigure_invalid_auth(
     assert result["errors"]["base"] == "invalid_auth"
 
 
-async def test_reconfigure_no_contracts(
-    hass: HomeAssistant, mock_config_entry
-) -> None:
+async def test_reconfigure_no_contracts(hass: HomeAssistant, mock_config_entry) -> None:
     mock_config_entry.add_to_hass(hass)
 
     with patch(PATCH_CLIENT, return_value=_make_client(contract_ids=[])):

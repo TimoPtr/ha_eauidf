@@ -106,6 +106,9 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 is_fixable=False,
                 severity=IssueSeverity.WARNING,
                 translation_key="persistent_update_failure",
+                translation_placeholders={
+                    "portal_url": "https://connexion.leaudiledefrance.fr"
+                },
             )
 
     @staticmethod

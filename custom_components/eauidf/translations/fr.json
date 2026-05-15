@@ -51,7 +51,7 @@
   "issues": {
     "persistent_update_failure": {
       "title": "Portail SEDIF inaccessible",
-      "description": "L'int\u00e9gration n'a pas r\u00e9ussi \u00e0 r\u00e9cup\u00e9rer les donn\u00e9es du portail SEDIF \u00e0 plusieurs reprises. V\u00e9rifiez que le portail est accessible \u00e0 https://connexion.leaudiledefrance.fr et essayez de reconfigurer l'int\u00e9gration."
+      "description": "L'int\u00e9gration n'a pas r\u00e9ussi \u00e0 r\u00e9cup\u00e9rer les donn\u00e9es du portail SEDIF \u00e0 plusieurs reprises. V\u00e9rifiez que le portail est accessible \u00e0 {portal_url} et essayez de reconfigurer l'int\u00e9gration."
     }
   }
 }

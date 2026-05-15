@@ -51,7 +51,7 @@
   "issues": {
     "persistent_update_failure": {
       "title": "SEDIF portal unreachable",
-      "description": "The integration has failed to fetch data from the SEDIF portal multiple times in a row. Check that the portal is accessible at https://connexion.leaudiledefrance.fr and try reconfiguring the integration."
+      "description": "The integration has failed to fetch data from the SEDIF portal multiple times in a row. Check that the portal is accessible at {portal_url} and try reconfiguring the integration."
     }
   }
 }
