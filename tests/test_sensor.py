@@ -9,7 +9,6 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.eauidf.const import DOMAIN
 from tests.conftest import (
-    MOCK_CONTRACT_ID,
     MOCK_CONTRACT_NUMBER,
     MOCK_CONTRACTS,
 )
@@ -52,7 +51,7 @@ async def _setup_integration(
 
 def _get_state(hass: HomeAssistant, mock_config_entry, key: str):
     ent_reg = er.async_get(hass)
-    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_{key}"
+    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_NUMBER}_{key}"
     entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id)
     assert entity_id is not None, f"Entity not found for unique_id: {unique_id}"
     return hass.states.get(entity_id)
@@ -65,7 +64,7 @@ async def test_all_sensors_created(
 
     ent_reg = er.async_get(hass)
     for key in ("meter_reading", "daily_consumption", "last_reading_date"):
-        unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_{key}"
+        unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_NUMBER}_{key}"
         entry = ent_reg.async_get(
             ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id)
         )
@@ -102,7 +101,7 @@ async def test_last_reading_date_disabled_by_default(
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     ent_reg = er.async_get(hass)
-    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
+    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_NUMBER}_last_reading_date"
     entry = ent_reg.async_get(ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id))
     assert entry is not None
     assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
@@ -114,7 +113,7 @@ async def test_last_reading_date_state(
     await _setup_integration(hass, mock_config_entry, mock_record)
 
     ent_reg = er.async_get(hass)
-    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
+    unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_NUMBER}_last_reading_date"
     ent_reg.async_update_entity(
         ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id),
         disabled_by=None,

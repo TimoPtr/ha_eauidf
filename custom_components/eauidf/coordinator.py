@@ -130,7 +130,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 )
                 if records:
                     latest = records[-1]
-                    data[cid] = ContractData(
+                    data[number] = ContractData(
                         meter_reading_m3=latest.meter_reading,
                         daily_consumption_l=latest.consumption_liters,
                         last_date=latest.date.date(),

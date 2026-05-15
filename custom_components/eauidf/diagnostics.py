@@ -23,12 +23,12 @@ async def async_get_config_entry_diagnostics(
     return {
         "config_entry_data": async_redact_data(dict(entry.data), TO_REDACT),
         "coordinator_data": {
-            contract_id: {
+            contract_number: {
                 "meter_reading_m3": data.meter_reading_m3,
                 "daily_consumption_l": data.daily_consumption_l,
                 "last_date": data.last_date.isoformat(),
                 "is_estimated": data.is_estimated,
             }
-            for contract_id, data in (coordinator.data or {}).items()
+            for contract_number, data in (coordinator.data or {}).items()
         },
     }

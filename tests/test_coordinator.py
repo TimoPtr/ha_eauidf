@@ -15,7 +15,7 @@ from custom_components.eauidf.coordinator import (
     ContractData,
     SedifCoordinator,
 )
-from tests.conftest import MOCK_CONTRACT_ID
+from tests.conftest import MOCK_CONTRACT_NUMBER
 
 PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
@@ -33,8 +33,8 @@ async def test_fetch_success(
         coordinator = SedifCoordinator(hass, mock_config_entry)
         await coordinator.async_refresh()
 
-    assert MOCK_CONTRACT_ID in coordinator.data
-    data = coordinator.data[MOCK_CONTRACT_ID]
+    assert MOCK_CONTRACT_NUMBER in coordinator.data
+    data = coordinator.data[MOCK_CONTRACT_NUMBER]
     assert isinstance(data, ContractData)
     assert data.meter_reading_m3 == mock_record.meter_reading
     assert data.daily_consumption_l == mock_record.consumption_liters

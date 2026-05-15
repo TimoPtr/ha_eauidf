@@ -69,12 +69,12 @@ async def _refresh_contracts(hass: HomeAssistant, entry: ConfigEntry) -> None:
         entry, data={**entry.data, CONF_CONTRACTS: contracts}
     )
 
-    old_ids = {c["id"] for c in old_contracts}
-    new_ids = {c["id"] for c in contracts}
-    removed = old_ids - new_ids
+    old_numbers = {c["number"] for c in old_contracts}
+    new_numbers = {c["number"] for c in contracts}
+    removed = old_numbers - new_numbers
     if removed:
         dev_reg = async_get_dev_reg(hass)
-        for contract_id in removed:
-            device = dev_reg.async_get_device(identifiers={(DOMAIN, contract_id)})
+        for number in removed:
+            device = dev_reg.async_get_device(identifiers={(DOMAIN, number)})
             if device:
                 dev_reg.async_remove_device(device.id)

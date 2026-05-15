@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.core import HomeAssistant
 
 from custom_components.eauidf.diagnostics import async_get_config_entry_diagnostics
-from tests.conftest import MOCK_CONTRACT_ID, MOCK_PASSWORD, MOCK_USERNAME
+from tests.conftest import (
+    MOCK_CONTRACT_ID,
+    MOCK_CONTRACT_NUMBER,
+    MOCK_PASSWORD,
+    MOCK_USERNAME,
+)
 
 PATCH_INIT_CLIENT = "custom_components.eauidf.EauIDFClient"
 PATCH_COORD_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
@@ -42,8 +47,8 @@ async def test_diagnostics_redacts_credentials(
     assert MOCK_USERNAME not in str(result)
     assert MOCK_PASSWORD not in str(result)
 
-    assert MOCK_CONTRACT_ID in result["coordinator_data"]
-    contract_data = result["coordinator_data"][MOCK_CONTRACT_ID]
+    assert MOCK_CONTRACT_NUMBER in result["coordinator_data"]
+    contract_data = result["coordinator_data"][MOCK_CONTRACT_NUMBER]
     assert contract_data["meter_reading_m3"] == mock_record.meter_reading
     assert contract_data["daily_consumption_l"] == mock_record.consumption_liters
     assert contract_data["is_estimated"] == mock_record.is_estimated

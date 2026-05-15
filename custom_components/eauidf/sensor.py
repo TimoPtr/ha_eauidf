@@ -108,9 +108,10 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._contract_id = contract_id
-        self._attr_unique_id = f"{entry_id}_{contract_id}_{description.key}"
+        self._contract_number = contract_number
+        self._attr_unique_id = f"{entry_id}_{contract_number}_{description.key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, contract_id)},
+            identifiers={(DOMAIN, contract_number)},
             name=f"SEDIF Contract {contract_number}",
             manufacturer="SEDIF",
             model="Water Meter",
@@ -121,7 +122,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         """Return the sensor value."""
         if not self.coordinator.data:
             return None
-        contract_data = self.coordinator.data.get(self._contract_id)
+        contract_data = self.coordinator.data.get(self._contract_number)
         if contract_data is None:
             return None
         return self.entity_description.value_fn(contract_data)
@@ -133,7 +134,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
             return None
         if not self.coordinator.data:
             return None
-        contract_data = self.coordinator.data.get(self._contract_id)
+        contract_data = self.coordinator.data.get(self._contract_number)
         if contract_data is None:
             return None
         return {
