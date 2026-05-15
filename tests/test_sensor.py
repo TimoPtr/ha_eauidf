@@ -1,6 +1,6 @@
 """Tests for the sensor platform."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfVolume
@@ -8,18 +8,44 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.eauidf.const import DOMAIN
-from tests.conftest import MOCK_CONTRACT_ID
+from tests.conftest import (
+    MOCK_CONTRACT_ID,
+    MOCK_CONTRACT_NUMBER,
+    MOCK_CONTRACTS,
+)
 
-PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
+PATCH_INIT_CLIENT = "custom_components.eauidf.EauIDFClient"
+PATCH_COORD_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
+
+
+def _make_init_client() -> MagicMock:
+    """Create a mock client for the __init__.py contract refresh."""
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.get_contracts = AsyncMock(return_value=[MOCK_CONTRACTS[0]["id"]])
+    client.get_contract_details = AsyncMock(
+        return_value={"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
+    )
+    return client
+
+
+def _make_coord_client(mock_record: MagicMock) -> MagicMock:
+    """Create a mock client for the coordinator."""
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    return client
 
 
 async def _setup_integration(
     hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     mock_config_entry.add_to_hass(hass)
-    client = MagicMock()
-    client.get_daily_consumption.return_value = [mock_record]
-    with patch(PATCH_CLIENT, return_value=client):
+    with (
+        patch(PATCH_INIT_CLIENT, return_value=_make_init_client()),
+        patch(PATCH_COORD_CLIENT, return_value=_make_coord_client(mock_record)),
+    ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
@@ -37,9 +63,13 @@ async def test_all_sensors_created(
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
+    ent_reg = er.async_get(hass)
     for key in ("meter_reading", "daily_consumption", "last_reading_date"):
-        state = _get_state(hass, mock_config_entry, key)
-        assert state is not None, f"Sensor {key} was not created"
+        unique_id = f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_{key}"
+        entry = ent_reg.async_get(
+            ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id)
+        )
+        assert entry is not None, f"Sensor {key} was not created"
 
 
 async def test_meter_reading_state(
@@ -66,12 +96,46 @@ async def test_daily_consumption_state(
     assert "device_class" not in state.attributes
 
 
+async def test_last_reading_date_disabled_by_default(
+    hass: HomeAssistant, mock_config_entry, mock_record
+) -> None:
+    await _setup_integration(hass, mock_config_entry, mock_record)
+
+    ent_reg = er.async_get(hass)
+    unique_id = (
+        f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
+    )
+    entry = ent_reg.async_get(ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id))
+    assert entry is not None
+    assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+
 async def test_last_reading_date_state(
     hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
-    state = _get_state(hass, mock_config_entry, "last_reading_date")
 
+    ent_reg = er.async_get(hass)
+    unique_id = (
+        f"{mock_config_entry.entry_id}_{MOCK_CONTRACT_ID}_last_reading_date"
+    )
+    ent_reg.async_update_entity(
+        ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id),
+        disabled_by=None,
+    )
+    await hass.async_block_till_done()
+
+    with (
+        patch(PATCH_INIT_CLIENT, return_value=_make_init_client()),
+        patch(
+            PATCH_COORD_CLIENT,
+            return_value=_make_coord_client(mock_record),
+        ),
+    ):
+        await hass.config_entries.async_reload(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = _get_state(hass, mock_config_entry, "last_reading_date")
     assert state.state == "2026-05-13"
     assert state.attributes["device_class"] == SensorDeviceClass.DATE
 
@@ -91,7 +155,7 @@ async def test_sensor_unavailable_when_no_data(
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
-    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+    coordinator = mock_config_entry.runtime_data
     coordinator.data = {}
     await coordinator.async_refresh()
     await hass.async_block_till_done()
@@ -104,9 +168,9 @@ async def test_unload_entry(
     hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
-    assert mock_config_entry.entry_id in hass.data[DOMAIN]
+    assert mock_config_entry.runtime_data is not None
 
-    await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    result = await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    assert mock_config_entry.entry_id not in hass.data.get(DOMAIN, {})
+    assert result is True

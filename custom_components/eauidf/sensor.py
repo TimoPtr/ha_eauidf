@@ -18,12 +18,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import CONF_CONTRACTS, DOMAIN
 from .coordinator import ContractData, SedifCoordinator
 
+PARALLEL_UPDATES = 0
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from . import EauIDFConfigEntry
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -41,7 +44,6 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         device_class=SensorDeviceClass.WATER,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        icon="mdi:counter",
         suggested_display_precision=0,
         value_fn=lambda d: d.meter_reading_m3,
         has_extra_attributes=True,
@@ -51,7 +53,6 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         translation_key="daily_consumption",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfVolume.LITERS,
-        icon="mdi:water",
         suggested_display_precision=0,
         value_fn=lambda d: d.daily_consumption_l,
         has_extra_attributes=True,
@@ -60,20 +61,20 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         key="last_reading_date",
         translation_key="last_reading_date",
         device_class=SensorDeviceClass.DATE,
-        icon="mdi:calendar-clock",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: d.last_date,
     ),
 )
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: EauIDFConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors from a config entry."""
-    coordinator: SedifCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     contracts = entry.data[CONF_CONTRACTS]
 
     async_add_entities(

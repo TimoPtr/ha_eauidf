@@ -32,12 +32,28 @@ Or add it manually:
 
 Copy the `custom_components/eauidf` folder into your Home Assistant `config/custom_components/` directory and restart.
 
+## Removal
+
+1. Go to **Settings > Devices & Services**
+2. Find **L'eau d'Ile-de-France** and click the three dots menu
+3. Click **Delete**
+4. Restart Home Assistant
+
+If installed via HACS, you can also uninstall the integration from HACS after removing the config entry.
+
 ## Configuration
 
 1. Go to **Settings > Devices & Services > Add Integration**
 2. Search for **L'eau d'Ile-de-France**
 3. Enter your SEDIF portal email and password (the same credentials you use at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr))
 4. The integration automatically discovers all contracts linked to your account
+
+### Parameters
+
+| Parameter | Required | Description |
+|---|---|---|
+| **Email** | Yes | The email address used to log in to the SEDIF customer portal at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr). |
+| **Password** | Yes | The password for your SEDIF portal account. Stored locally in Home Assistant and only sent to the SEDIF portal for authentication. |
 
 Each contract appears as a separate device named **SEDIF Contract {number}** (e.g. "SEDIF Contract 9235380"), where the number matches your SEDIF contract reference.
 

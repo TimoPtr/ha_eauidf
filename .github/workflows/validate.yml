@@ -57,3 +57,6 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ --cov --cov-report=term-missing
+
+      - name: Type check
+        run: mypy custom_components/eauidf/

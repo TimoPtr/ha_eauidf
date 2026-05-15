@@ -10,6 +10,7 @@ test = [
     "pytest-asyncio>=0.24",
     "pytest-homeassistant-custom-component",
     "pytest-cov",
+    "mypy",
 ]
 
 [tool.ruff]
@@ -45,3 +46,12 @@ asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["custom_components/eauidf"]
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["homeassistant.*", "pyeauidf.*", "voluptuous"]
+ignore_missing_imports = true

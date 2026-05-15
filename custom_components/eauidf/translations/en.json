@@ -15,6 +15,13 @@
         "data": {
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure",
+        "description": "Update your password and refresh the contract list.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -24,7 +31,8 @@
     },
     "abort": {
       "already_configured": "This account is already configured.",
-      "reauth_successful": "Re-authentication successful."
+      "reauth_successful": "Re-authentication successful.",
+      "reconfigure_successful": "Reconfiguration successful."
     }
   },
   "entity": {
@@ -38,6 +46,12 @@
       "last_reading_date": {
         "name": "Last reading date"
       }
+    }
+  },
+  "issues": {
+    "persistent_update_failure": {
+      "title": "SEDIF portal unreachable",
+      "description": "The integration has failed to fetch data from the SEDIF portal multiple times in a row. Check that the portal is accessible at https://connexion.leaudiledefrance.fr and try reconfiguring the integration."
     }
   }
 }

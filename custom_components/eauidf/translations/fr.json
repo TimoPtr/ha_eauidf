@@ -15,6 +15,13 @@
         "data": {
           "password": "Mot de passe"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer",
+        "description": "Mettez \u00e0 jour votre mot de passe et actualisez la liste des contrats.",
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
@@ -24,7 +31,8 @@
     },
     "abort": {
       "already_configured": "Ce compte est d\u00e9j\u00e0 configur\u00e9.",
-      "reauth_successful": "R\u00e9-authentification r\u00e9ussie."
+      "reauth_successful": "R\u00e9-authentification r\u00e9ussie.",
+      "reconfigure_successful": "Reconfiguration r\u00e9ussie."
     }
   },
   "entity": {
@@ -38,6 +46,12 @@
       "last_reading_date": {
         "name": "Date du dernier relev\u00e9"
       }
+    }
+  },
+  "issues": {
+    "persistent_update_failure": {
+      "title": "Portail SEDIF inaccessible",
+      "description": "L'int\u00e9gration n'a pas r\u00e9ussi \u00e0 r\u00e9cup\u00e9rer les donn\u00e9es du portail SEDIF \u00e0 plusieurs reprises. V\u00e9rifiez que le portail est accessible \u00e0 https://connexion.leaudiledefrance.fr et essayez de reconfigurer l'int\u00e9gration."
     }
   }
 }
