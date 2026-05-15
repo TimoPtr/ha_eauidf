@@ -18,12 +18,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import CONF_CONTRACTS, DOMAIN
 from .coordinator import ContractData, SedifCoordinator
 
+PARALLEL_UPDATES = 0
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from . import EauIDFConfigEntry
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -41,7 +44,6 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         device_class=SensorDeviceClass.WATER,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        icon="mdi:counter",
         suggested_display_precision=0,
         value_fn=lambda d: d.meter_reading_m3,
         has_extra_attributes=True,
@@ -51,7 +53,6 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         translation_key="daily_consumption",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfVolume.LITERS,
-        icon="mdi:water",
         suggested_display_precision=0,
         value_fn=lambda d: d.daily_consumption_l,
         has_extra_attributes=True,
@@ -60,20 +61,20 @@ SENSOR_TYPES: tuple[SedifSensorDescription, ...] = (
         key="last_reading_date",
         translation_key="last_reading_date",
         device_class=SensorDeviceClass.DATE,
-        icon="mdi:calendar-clock",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: d.last_date,
     ),
 )
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: EauIDFConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors from a config entry."""
-    coordinator: SedifCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     contracts = entry.data[CONF_CONTRACTS]
 
     async_add_entities(
@@ -107,9 +108,10 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._contract_id = contract_id
-        self._attr_unique_id = f"{entry_id}_{contract_id}_{description.key}"
+        self._contract_number = contract_number
+        self._attr_unique_id = f"{entry_id}_{contract_number}_{description.key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, contract_id)},
+            identifiers={(DOMAIN, contract_number)},
             name=f"SEDIF Contract {contract_number}",
             manufacturer="SEDIF",
             model="Water Meter",
@@ -120,7 +122,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         """Return the sensor value."""
         if not self.coordinator.data:
             return None
-        contract_data = self.coordinator.data.get(self._contract_id)
+        contract_data = self.coordinator.data.get(self._contract_number)
         if contract_data is None:
             return None
         return self.entity_description.value_fn(contract_data)
@@ -132,7 +134,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
             return None
         if not self.coordinator.data:
             return None
-        contract_data = self.coordinator.data.get(self._contract_id)
+        contract_data = self.coordinator.data.get(self._contract_number)
         if contract_data is None:
             return None
         return {

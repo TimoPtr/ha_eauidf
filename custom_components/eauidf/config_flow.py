@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from pyeauidf import EauIDFClient
 from pyeauidf.client import AuthenticationError, EauIDFError
 
@@ -43,8 +44,10 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
             except AuthenticationError:
+                _LOGGER.debug("Invalid credentials for %s", user_input[CONF_USERNAME])
                 errors["base"] = "invalid_auth"
             except EauIDFError:
+                _LOGGER.debug("Cannot connect to SEDIF portal", exc_info=True)
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during config flow")
@@ -86,8 +89,13 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_PASSWORD],
                 )
             except AuthenticationError:
+                _LOGGER.debug("Invalid credentials during reauth")
                 errors["base"] = "invalid_auth"
             except EauIDFError:
+                _LOGGER.debug(
+                    "Cannot connect to SEDIF portal during reauth",
+                    exc_info=True,
+                )
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during reauth")
@@ -107,24 +115,65 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            reconfigure_entry = self._get_reconfigure_entry()
+            username = reconfigure_entry.data[CONF_USERNAME]
+            try:
+                contracts = await self._validate_and_fetch_contracts(
+                    username, user_input[CONF_PASSWORD]
+                )
+            except AuthenticationError:
+                _LOGGER.debug("Invalid credentials during reconfiguration")
+                errors["base"] = "invalid_auth"
+            except EauIDFError:
+                _LOGGER.debug(
+                    "Cannot connect to SEDIF portal during reconfiguration",
+                    exc_info=True,
+                )
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Unexpected error during reconfiguration")
+                errors["base"] = "cannot_connect"
+            else:
+                if not contracts:
+                    errors["base"] = "no_contracts"
+                else:
+                    return self.async_update_reload_and_abort(
+                        reconfigure_entry,
+                        data_updates={
+                            CONF_PASSWORD: user_input[CONF_PASSWORD],
+                            CONF_CONTRACTS: contracts,
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            errors=errors,
+        )
+
     async def _validate_and_fetch_contracts(
         self, username: str, password: str
     ) -> list[dict[str, str]]:
         """Validate credentials and return contract list."""
-
-        def _fetch() -> list[dict[str, str]]:
-            client = EauIDFClient(username, password)
-            try:
-                client.login()
-                contract_ids = client.get_contracts()
-                contracts = []
-                for cid in contract_ids:
-                    details = client.get_contract_details(cid)
-                    contrat = details.get("contrat", {})
-                    number = contrat.get("Name", cid)
-                    contracts.append({"id": cid, "number": str(number)})
-                return contracts
-            finally:
-                client.close()
-
-        return await self.hass.async_add_executor_job(_fetch)
+        client = EauIDFClient(
+            username, password, session=async_create_clientsession(self.hass)
+        )
+        try:
+            await client.login()
+            contract_ids = await client.get_contracts()
+            contracts = []
+            for cid in contract_ids:
+                details = await client.get_contract_details(cid)
+                contrat = details.get("contrat", {})
+                number = contrat.get("Name", cid)
+                contracts.append({"id": cid, "number": str(number)})
+            return contracts
+        finally:
+            await client.close()
