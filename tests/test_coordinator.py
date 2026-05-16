@@ -1,7 +1,11 @@
 """Tests for the coordinator."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from homeassistant.components.recorder import Recorder
+from homeassistant.components.recorder.statistics import get_last_statistics
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.issue_registry import async_get as async_get_issue_reg
@@ -11,6 +15,8 @@ from pyeauidf.client import AuthenticationError, EauIDFError
 from custom_components.eauidf.const import DOMAIN
 from custom_components.eauidf.coordinator import (
     CONSECUTIVE_FAILURE_THRESHOLD,
+    HISTORY_DAYS_FIRST_IMPORT,
+    HISTORY_DAYS_INCREMENTAL,
     ISSUE_ID_PERSISTENT_FAILURE,
     ContractData,
     SedifCoordinator,
@@ -21,7 +27,10 @@ PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
 
 async def test_fetch_success(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_record,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
@@ -42,7 +51,9 @@ async def test_fetch_success(
     assert data.is_estimated == mock_record.is_estimated
 
 
-async def test_fetch_auth_error_raises(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_fetch_auth_error_raises(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock(side_effect=AuthenticationError("expired"))
@@ -56,7 +67,9 @@ async def test_fetch_auth_error_raises(hass: HomeAssistant, mock_config_entry) -
     assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
 
 
-async def test_fetch_api_error_raises(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_fetch_api_error_raises(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock(side_effect=EauIDFError("api down"))
@@ -71,7 +84,7 @@ async def test_fetch_api_error_raises(hass: HomeAssistant, mock_config_entry) ->
 
 
 async def test_fetch_unexpected_error_raises(
-    hass: HomeAssistant, mock_config_entry
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
@@ -87,7 +100,7 @@ async def test_fetch_unexpected_error_raises(
 
 
 async def test_fetch_empty_records_raises(
-    hass: HomeAssistant, mock_config_entry
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
 ) -> None:
     """When all contracts return no records, UpdateFailed is raised."""
     mock_config_entry.add_to_hass(hass)
@@ -105,7 +118,10 @@ async def test_fetch_empty_records_raises(
 
 
 async def test_client_closed_on_success(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_record,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
@@ -120,7 +136,9 @@ async def test_client_closed_on_success(
     client.close.assert_called_once()
 
 
-async def test_client_closed_on_error(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_client_closed_on_error(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock(side_effect=EauIDFError("fail"))
@@ -134,7 +152,7 @@ async def test_client_closed_on_error(hass: HomeAssistant, mock_config_entry) ->
 
 
 async def test_repair_issue_created_after_consecutive_failures(
-    hass: HomeAssistant, mock_config_entry
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
@@ -152,7 +170,10 @@ async def test_repair_issue_created_after_consecutive_failures(
 
 
 async def test_repair_issue_dismissed_on_success(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_record,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     failing_client = MagicMock()
@@ -175,3 +196,122 @@ async def test_repair_issue_dismissed_on_success(
     issue_reg = async_get_issue_reg(hass)
     issue = issue_reg.async_get_issue(DOMAIN, ISSUE_ID_PERSISTENT_FAILURE)
     assert issue is None
+
+
+# ---------------------------------------------------------------------------
+# Statistics import
+# ---------------------------------------------------------------------------
+
+STAT_ID = f"{DOMAIN}:{MOCK_CONTRACT_NUMBER}_water_consumption"
+
+
+async def test_first_import_fetches_90_days(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_records_list,
+) -> None:
+    """First import (no existing stats) should request 90 days of history."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    call_kwargs = client.get_daily_consumption.call_args.kwargs
+    today = datetime.now(UTC).date()
+    assert call_kwargs["start_date"] == today - timedelta(
+        days=HISTORY_DAYS_FIRST_IMPORT
+    )
+
+
+async def test_incremental_import_fetches_7_days(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_records_list,
+) -> None:
+    """After first import, subsequent calls should use 7 days."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        client.get_daily_consumption.reset_mock()
+        await coordinator.async_refresh()
+
+    call_kwargs = client.get_daily_consumption.call_args.kwargs
+    today = datetime.now(UTC).date()
+    expected = today - timedelta(days=HISTORY_DAYS_INCREMENTAL)
+    assert call_kwargs["start_date"] <= expected
+
+
+async def test_statistics_values_correct(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_records_list,
+) -> None:
+    """Verify sum=meter_reading and state=consumption_liters/1000."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    await hass.async_block_till_done()
+
+    stats = await hass.async_add_executor_job(
+        get_last_statistics,
+        hass,
+        1,
+        STAT_ID,
+        True,  # noqa: FBT003
+        {"sum", "state"},
+    )
+    assert STAT_ID in stats
+    last = stats[STAT_ID][0]
+    last_record = mock_records_list[-1]
+    assert last["sum"] == pytest.approx(last_record.meter_reading)
+    assert last["state"] == pytest.approx(last_record.consumption_liters / 1000)
+
+
+async def test_statistics_failure_does_not_break_sensors(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_records_list,
+) -> None:
+    """If statistics insertion fails, sensor data should still be available."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+
+    with (
+        patch(PATCH_CLIENT, return_value=client),
+        patch(
+            "custom_components.eauidf.coordinator.async_add_external_statistics",
+            side_effect=RuntimeError("recorder broken"),
+        ),
+    ):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert MOCK_CONTRACT_NUMBER in coordinator.data

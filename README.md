@@ -4,7 +4,7 @@
 
 Home Assistant custom integration for [L'eau d'Ile-de-France](https://connexion.leaudiledefrance.fr) (SEDIF) water consumption monitoring.
 
-Fetches your water meter data from the SEDIF customer portal and exposes it as sensors in Home Assistant — compatible with the **Energy dashboard** for water tracking.
+Fetches your water meter data from the SEDIF customer portal and exposes it as sensors in Home Assistant. Historical consumption is imported as **external statistics** with correct timestamps, making it fully compatible with the **Energy dashboard** for water tracking.
 
 ## Disclaimer
 
@@ -86,8 +86,6 @@ The amount of water consumed during the last reported day.
 
 The water usage for the most recent day available from the SEDIF portal. This value is replaced each time new data is published (typically daily with a 1-2 day delay). A typical household uses between 100 and 300 liters per day.
 
-For long-term water tracking and the Energy dashboard, use the **Meter Reading** sensor instead — it accumulates over time and HA computes the differences automatically.
-
 ### Last Reading Date (`sensor.sedif_contract_*_last_reading_date`)
 
 The date of the most recent data available from the SEDIF portal. This is the date of the data itself, not when the integration last polled.
@@ -111,15 +109,26 @@ The meter reading and daily consumption sensors expose the following additional 
 
 ## Energy Dashboard
 
-Both sensors are compatible with the Home Assistant Energy dashboard:
+The integration imports historical water consumption data as **external statistics** with correct timestamps, so the Energy dashboard attributes usage to the right day (not when the integration polled).
+
+On first setup, up to **90 days** of history are imported. After that, only the last 7 days are fetched on each update cycle, keeping the statistics up to date without redundant API calls.
+
+To add water tracking:
 
 1. Go to **Settings > Dashboards > Energy**
 2. In the **Water consumption** section, click **Add water source**
-3. Select the **Meter Reading** sensor (recommended — it uses `total_increasing` which works best with the Energy dashboard's statistics)
+3. Search for **SEDIF {contract_number} water consumption** — this is the external statistic created by the integration
+
+> **Important:** Use the external statistic, not the sensor entities. The **Meter Reading** sensor updates every 6 hours and timestamps data at poll time, which causes consumption to appear on the wrong day. The external statistic uses the actual date reported by SEDIF, so the Energy dashboard shows accurate daily breakdowns.
 
 ## Data updates
 
-The integration polls the SEDIF portal every **6 hours**. Water consumption data on the portal typically updates once per day with a 1-2 day delay, so more frequent polling is unnecessary.
+The integration polls the SEDIF portal every **6 hours**. Each update fetches daily consumption records and:
+
+- Updates the sensor entities with the latest values
+- Imports the records as external statistics into the recorder (used by the Energy dashboard)
+
+Water consumption data on the portal typically updates once per day with a 1-2 day delay, so more frequent polling is unnecessary.
 
 If your credentials expire, Home Assistant will prompt you to re-authenticate through the integration's configuration page.
 

@@ -1,6 +1,6 @@
 """Shared fixtures for eauidf tests."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,6 +17,11 @@ def auto_enable_custom_integrations(
     enable_custom_integrations: None,
 ) -> None:
     """Enable custom integrations for all tests."""
+
+
+@pytest.fixture
+def mock_recorder_before_hass(recorder_db_url: str) -> None:
+    """Set up the recorder database before hass."""
 
 
 MOCK_USERNAME = "test@example.com"
@@ -48,3 +53,32 @@ def mock_record() -> MagicMock:
     record.date.date.return_value = date(2026, 5, 13)
     record.is_estimated = False
     return record
+
+
+def make_consumption_record(
+    d: date, consumption_liters: float, meter_reading: float
+) -> MagicMock:
+    record = MagicMock()
+    dt = datetime(d.year, d.month, d.day, tzinfo=UTC)
+    mock_date = MagicMock(wraps=dt)
+    mock_date.date = MagicMock(return_value=d)
+    mock_date.__lt__ = lambda _self, other: dt < other
+    mock_date.__le__ = lambda _self, other: dt <= other
+    mock_date.__gt__ = lambda _self, other: dt > other
+    mock_date.__ge__ = lambda _self, other: dt >= other
+    mock_date.__eq__ = lambda _self, other: dt == other
+    record.date = mock_date
+    record.consumption_liters = consumption_liters
+    record.meter_reading = meter_reading
+    record.is_estimated = False
+    return record
+
+
+@pytest.fixture
+def mock_records_list() -> list[MagicMock]:
+    base = date(2026, 5, 11)
+    return [
+        make_consumption_record(base, 100.0, 1234.0),
+        make_consumption_record(base + timedelta(days=1), 120.0, 1234.12),
+        make_consumption_record(base + timedelta(days=2), 150.0, 1234.27),
+    ]
