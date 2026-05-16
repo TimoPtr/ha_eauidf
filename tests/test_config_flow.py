@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant import config_entries
+from homeassistant.components.recorder import Recorder
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from pyeauidf.client import AuthenticationError, EauIDFError
@@ -32,7 +33,9 @@ def _make_client(contract_ids: list | None = None) -> MagicMock:
     return client
 
 
-async def test_user_step_shows_form(hass: HomeAssistant) -> None:
+async def test_user_step_shows_form(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -41,7 +44,7 @@ async def test_user_step_shows_form(hass: HomeAssistant) -> None:
     assert not result["errors"]
 
 
-async def test_user_step_success(hass: HomeAssistant) -> None:
+async def test_user_step_success(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     with patch(PATCH_CLIENT, return_value=_make_client()):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -58,7 +61,9 @@ async def test_user_step_success(hass: HomeAssistant) -> None:
     assert result["data"][CONF_CONTRACTS] == MOCK_CONTRACTS
 
 
-async def test_user_step_invalid_auth(hass: HomeAssistant) -> None:
+async def test_user_step_invalid_auth(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
     client = MagicMock()
     client.login = AsyncMock(side_effect=AuthenticationError("bad credentials"))
     client.close = AsyncMock()
@@ -76,7 +81,9 @@ async def test_user_step_invalid_auth(hass: HomeAssistant) -> None:
     assert result["errors"]["base"] == "invalid_auth"
 
 
-async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
+async def test_user_step_cannot_connect(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
     client = MagicMock()
     client.login = AsyncMock(side_effect=EauIDFError("connection failed"))
     client.close = AsyncMock()
@@ -94,7 +101,9 @@ async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
     assert result["errors"]["base"] == "cannot_connect"
 
 
-async def test_user_step_unexpected_error(hass: HomeAssistant) -> None:
+async def test_user_step_unexpected_error(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
     client = MagicMock()
     client.login = AsyncMock(side_effect=RuntimeError("unexpected"))
     client.close = AsyncMock()
@@ -112,7 +121,9 @@ async def test_user_step_unexpected_error(hass: HomeAssistant) -> None:
     assert result["errors"]["base"] == "cannot_connect"
 
 
-async def test_user_step_no_contracts(hass: HomeAssistant) -> None:
+async def test_user_step_no_contracts(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
     with patch(PATCH_CLIENT, return_value=_make_client(contract_ids=[])):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -127,7 +138,7 @@ async def test_user_step_no_contracts(hass: HomeAssistant) -> None:
 
 
 async def test_user_step_already_configured(
-    hass: HomeAssistant, mock_config_entry
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 
@@ -144,7 +155,9 @@ async def test_user_step_already_configured(
     assert result["reason"] == "already_configured"
 
 
-async def test_reauth_shows_form(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reauth_shows_form(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
@@ -154,7 +167,7 @@ async def test_reauth_shows_form(hass: HomeAssistant, mock_config_entry) -> None
 
 
 async def test_reauth_success(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 
@@ -185,7 +198,9 @@ async def test_reauth_success(
     await hass.async_block_till_done()
 
 
-async def test_reauth_invalid_auth(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reauth_invalid_auth(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     client = MagicMock()
@@ -203,7 +218,9 @@ async def test_reauth_invalid_auth(hass: HomeAssistant, mock_config_entry) -> No
     assert result["errors"]["base"] == "invalid_auth"
 
 
-async def test_reauth_cannot_connect(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reauth_cannot_connect(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     client = MagicMock()
@@ -221,7 +238,9 @@ async def test_reauth_cannot_connect(hass: HomeAssistant, mock_config_entry) -> 
     assert result["errors"]["base"] == "cannot_connect"
 
 
-async def test_reconfigure_shows_form(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reconfigure_shows_form(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
@@ -231,7 +250,7 @@ async def test_reconfigure_shows_form(hass: HomeAssistant, mock_config_entry) ->
 
 
 async def test_reconfigure_success(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 
@@ -274,7 +293,9 @@ async def test_reconfigure_success(
     await hass.async_block_till_done()
 
 
-async def test_reconfigure_invalid_auth(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reconfigure_invalid_auth(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     client = MagicMock()
@@ -292,7 +313,9 @@ async def test_reconfigure_invalid_auth(hass: HomeAssistant, mock_config_entry) 
     assert result["errors"]["base"] == "invalid_auth"
 
 
-async def test_reconfigure_no_contracts(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_reconfigure_no_contracts(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
     mock_config_entry.add_to_hass(hass)
 
     with patch(PATCH_CLIENT, return_value=_make_client(contract_ids=[])):

@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.components.recorder import Recorder
 from homeassistant.core import HomeAssistant
 
 from custom_components.eauidf.diagnostics import async_get_config_entry_diagnostics
@@ -17,7 +18,7 @@ PATCH_COORD_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
 
 async def test_diagnostics_redacts_credentials(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 

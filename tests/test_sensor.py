@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.components.recorder import Recorder
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
@@ -58,7 +59,7 @@ def _get_state(hass: HomeAssistant, mock_config_entry, key: str):
 
 
 async def test_all_sensors_created(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
@@ -72,7 +73,7 @@ async def test_all_sensors_created(
 
 
 async def test_meter_reading_state(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "meter_reading")
@@ -84,7 +85,7 @@ async def test_meter_reading_state(
 
 
 async def test_daily_consumption_state(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "daily_consumption")
@@ -96,7 +97,7 @@ async def test_daily_consumption_state(
 
 
 async def test_last_reading_date_disabled_by_default(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
@@ -108,7 +109,7 @@ async def test_last_reading_date_disabled_by_default(
 
 
 async def test_last_reading_date_state(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
@@ -136,7 +137,7 @@ async def test_last_reading_date_state(
 
 
 async def test_extra_attributes(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     state = _get_state(hass, mock_config_entry, "meter_reading")
@@ -146,7 +147,7 @@ async def test_extra_attributes(
 
 
 async def test_sensor_unavailable_when_no_data(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
 
@@ -160,7 +161,7 @@ async def test_sensor_unavailable_when_no_data(
 
 
 async def test_unload_entry(
-    hass: HomeAssistant, mock_config_entry, mock_record
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry, mock_record
 ) -> None:
     await _setup_integration(hass, mock_config_entry, mock_record)
     assert mock_config_entry.runtime_data is not None

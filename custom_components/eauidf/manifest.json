@@ -1,4 +1,5 @@
 {
+  "dependencies": ["recorder"],
   "domain": "eauidf",
   "name": "L'eau d'Ile-de-France",
   "codeowners": ["@TimoPtr"],
