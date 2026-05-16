@@ -1,9 +1,9 @@
 {
-  "dependencies": ["recorder"],
   "domain": "eauidf",
   "name": "L'eau d'Ile-de-France",
   "codeowners": ["@TimoPtr"],
   "config_flow": true,
+  "dependencies": ["recorder"],
   "documentation": "https://github.com/TimoPtr/ha_eauidf",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/TimoPtr/ha_eauidf/issues",

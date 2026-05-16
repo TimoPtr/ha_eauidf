@@ -27,6 +27,7 @@ from homeassistant.helpers.issue_registry import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import VolumeConverter
 from pyeauidf import EauIDFClient
 from pyeauidf.client import AuthenticationError, ConsumptionRecord, EauIDFError
 
@@ -129,6 +130,11 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 set(),
             )
             if not last_stat:
+                _LOGGER.debug(
+                    "No existing statistics for %s, importing %d days",
+                    statistic_id,
+                    HISTORY_DAYS_FIRST_IMPORT,
+                )
                 return today - timedelta(days=HISTORY_DAYS_FIRST_IMPORT)
 
             last_start = last_stat[statistic_id][0]["start"]
@@ -138,6 +144,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 contract_date = last_start.date()
             earliest = min(earliest, contract_date)
 
+        _LOGGER.debug("Fetching consumption data from %s", earliest)
         return earliest
 
     def _on_success(self) -> None:
@@ -189,7 +196,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             name=f"SEDIF {contract_number} water consumption",
             source=DOMAIN,
             statistic_id=statistic_id,
-            unit_class=None,
+            unit_class=VolumeConverter.UNIT_CLASS,
             unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         )
 
@@ -226,8 +233,15 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 )
             )
 
+        async_add_external_statistics(self.hass, metadata, statistics)
         if statistics:
-            async_add_external_statistics(self.hass, metadata, statistics)
+            _LOGGER.debug(
+                "Inserted %d statistics for %s",
+                len(statistics),
+                statistic_id,
+            )
+        else:
+            _LOGGER.debug("No new statistics to insert for %s", statistic_id)
 
     @staticmethod
     async def _fetch_all(
