@@ -119,6 +119,8 @@ To add water tracking:
 2. In the **Water consumption** section, click **Add water source**
 3. Search for **SEDIF {contract_number} water consumption** — this is the external statistic created by the integration
 
+> **Important:** Use the external statistic, not the sensor entities. The **Meter Reading** sensor updates every 6 hours and timestamps data at poll time, which causes consumption to appear on the wrong day. The external statistic uses the actual date reported by SEDIF, so the Energy dashboard shows accurate daily breakdowns.
+
 ## Data updates
 
 The integration polls the SEDIF portal every **6 hours**. Each update fetches daily consumption records and:
