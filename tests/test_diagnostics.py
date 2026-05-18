@@ -11,6 +11,7 @@ from tests.conftest import (
     MOCK_CONTRACT_NUMBER,
     MOCK_PASSWORD,
     MOCK_USERNAME,
+    make_consumption_data,
 )
 
 PATCH_INIT_CLIENT = "custom_components.eauidf.EauIDFClient"
@@ -32,7 +33,9 @@ async def test_diagnostics_redacts_credentials(
     coord_client = MagicMock()
     coord_client.login = AsyncMock()
     coord_client.close = AsyncMock()
-    coord_client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    coord_client.get_daily_consumption = AsyncMock(
+        return_value=make_consumption_data([mock_record])
+    )
 
     with (
         patch(PATCH_INIT_CLIENT, return_value=init_client),

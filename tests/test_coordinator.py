@@ -21,7 +21,11 @@ from custom_components.eauidf.coordinator import (
     ContractData,
     SedifCoordinator,
 )
-from tests.conftest import MOCK_CONTRACT_NUMBER
+from tests.conftest import (
+    MOCK_CONTRACT_NUMBER,
+    MOCK_PRICE_PER_M3,
+    make_consumption_data,
+)
 
 PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
@@ -30,13 +34,13 @@ async def test_fetch_success(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_record,
+    mock_consumption_data,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -45,10 +49,11 @@ async def test_fetch_success(
     assert MOCK_CONTRACT_NUMBER in coordinator.data
     data = coordinator.data[MOCK_CONTRACT_NUMBER]
     assert isinstance(data, ContractData)
-    assert data.meter_reading_m3 == mock_record.meter_reading
-    assert data.daily_consumption_l == mock_record.consumption_liters
-    assert data.last_date == mock_record.date.date()
-    assert data.is_estimated == mock_record.is_estimated
+    record = mock_consumption_data.records[0]
+    assert data.meter_reading_m3 == record.meter_reading
+    assert data.daily_consumption_l == record.consumption_liters
+    assert data.last_date == record.date.date()
+    assert data.is_estimated == record.is_estimated
 
 
 async def test_fetch_auth_error_raises(
@@ -107,7 +112,7 @@ async def test_fetch_empty_records_raises(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=[])
+    client.get_daily_consumption = AsyncMock(return_value=make_consumption_data([]))
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -121,13 +126,13 @@ async def test_client_closed_on_success(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_record,
+    mock_consumption_data,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -173,7 +178,7 @@ async def test_repair_issue_dismissed_on_success(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_record,
+    mock_consumption_data,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     failing_client = MagicMock()
@@ -188,7 +193,7 @@ async def test_repair_issue_dismissed_on_success(
     success_client = MagicMock()
     success_client.login = AsyncMock()
     success_client.close = AsyncMock()
-    success_client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    success_client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=success_client):
         await coordinator.async_refresh()
@@ -203,20 +208,21 @@ async def test_repair_issue_dismissed_on_success(
 # ---------------------------------------------------------------------------
 
 STAT_ID = f"{DOMAIN}:{MOCK_CONTRACT_NUMBER}_water_consumption"
+COST_STAT_ID = f"{DOMAIN}:{MOCK_CONTRACT_NUMBER}_water_cost"
 
 
 async def test_first_import_fetches_90_days(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_records_list,
+    mock_consumption_data_list,
 ) -> None:
     """First import (no existing stats) should request 90 days of history."""
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -233,14 +239,14 @@ async def test_incremental_import_fetches_7_days(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_records_list,
+    mock_consumption_data_list,
 ) -> None:
     """After first import, subsequent calls should use 7 days."""
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -260,14 +266,14 @@ async def test_statistics_values_correct(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_records_list,
+    mock_consumption_data_list,
 ) -> None:
     """Verify sum=meter_reading and state=consumption_liters/1000."""
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
         coordinator = SedifCoordinator(hass, mock_config_entry)
@@ -285,23 +291,62 @@ async def test_statistics_values_correct(
     )
     assert STAT_ID in stats
     last = stats[STAT_ID][0]
-    last_record = mock_records_list[-1]
+    last_record = mock_consumption_data_list.records[-1]
     assert last["sum"] == pytest.approx(last_record.meter_reading)
     assert last["state"] == pytest.approx(last_record.consumption_liters / 1000)
+
+
+async def test_cost_statistics_inserted(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data_list,
+) -> None:
+    """Verify cost statistics are inserted with cumulative sum."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    await hass.async_block_till_done()
+
+    stats = await hass.async_add_executor_job(
+        get_last_statistics,
+        hass,
+        1,
+        COST_STAT_ID,
+        True,  # noqa: FBT003
+        {"sum", "state"},
+    )
+    assert COST_STAT_ID in stats
+    last = stats[COST_STAT_ID][0]
+    records = mock_consumption_data_list.records
+    expected_sum = sum(
+        (r.consumption_liters / 1000) * MOCK_PRICE_PER_M3 for r in records
+    )
+    assert last["sum"] == pytest.approx(expected_sum)
+    last_record = records[-1]
+    expected_state = (last_record.consumption_liters / 1000) * MOCK_PRICE_PER_M3
+    assert last["state"] == pytest.approx(expected_state)
 
 
 async def test_statistics_failure_does_not_break_sensors(
     recorder_mock: Recorder,
     hass: HomeAssistant,
     mock_config_entry,
-    mock_records_list,
+    mock_consumption_data_list,
 ) -> None:
     """If statistics insertion fails, sensor data should still be available."""
     mock_config_entry.add_to_hass(hass)
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=mock_records_list)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with (
         patch(PATCH_CLIENT, return_value=client),

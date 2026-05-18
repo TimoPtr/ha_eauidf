@@ -8,6 +8,6 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/TimoPtr/ha_eauidf/issues",
   "quality_scale": "platinum",
-  "requirements": ["pyeauidf==1.0.1"],
+  "requirements": ["pyeauidf==1.2.0"],
   "version": "1.0.1"
 }
