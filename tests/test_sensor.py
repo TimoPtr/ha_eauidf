@@ -12,6 +12,7 @@ from custom_components.eauidf.const import DOMAIN
 from tests.conftest import (
     MOCK_CONTRACT_NUMBER,
     MOCK_CONTRACTS,
+    make_consumption_data,
 )
 
 PATCH_INIT_CLIENT = "custom_components.eauidf.EauIDFClient"
@@ -34,7 +35,9 @@ def _make_coord_client(mock_record: MagicMock) -> MagicMock:
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_daily_consumption = AsyncMock(return_value=[mock_record])
+    client.get_daily_consumption = AsyncMock(
+        return_value=make_consumption_data([mock_record])
+    )
     return client
 
 

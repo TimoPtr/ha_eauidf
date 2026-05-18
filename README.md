@@ -55,7 +55,7 @@ If installed via HACS, you can also uninstall the integration from HACS after re
 | **Email** | Yes | The email address used to log in to the SEDIF customer portal at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr). |
 | **Password** | Yes | The password for your SEDIF portal account. Stored locally in Home Assistant and only sent to the SEDIF portal for authentication. |
 
-Each contract appears as a separate device named **SEDIF Contract {number}** (e.g. "SEDIF Contract 9235380"), where the number matches your SEDIF contract reference.
+Each contract appears as a separate device named **SEDIF Contract {number}** (e.g. "SEDIF Contract XXXXXXX"), where the number matches your SEDIF contract reference.
 
 ## Entities
 
@@ -111,13 +111,22 @@ The meter reading and daily consumption sensors expose the following additional 
 
 The integration imports historical water consumption data as **external statistics** with correct timestamps, so the Energy dashboard attributes usage to the right day (not when the integration polled).
 
-On first setup, up to **90 days** of history are imported. After that, only the last 7 days are fetched on each update cycle, keeping the statistics up to date without redundant API calls.
+On first setup, up to **90 days** of history are imported. After that, only the last 7 days are fetched on each update cycle, keeping the statistics up to date without redundant API calls. Estimated readings are excluded from statistics to avoid double-counting when the actual value is published later.
+
+Two external statistics are created per contract:
+
+| Statistic | Unit | Description |
+|---|---|---|
+| **SEDIF {contract_number} water consumption** | m³ | Cumulative water consumption (for Energy Dashboard water tracking) |
+| **SEDIF {contract_number} water cost** | EUR | Cumulative water cost based on the average price per m³ reported by the SEDIF portal |
 
 To add water tracking:
 
 1. Go to **Settings > Dashboards > Energy**
 2. In the **Water consumption** section, click **Add water source**
 3. Search for **SEDIF {contract_number} water consumption** — this is the external statistic created by the integration
+
+The water cost statistic can be used in custom cards or automations. It uses the average price per cubic meter provided by the SEDIF portal to compute daily costs.
 
 > **Important:** Use the external statistic, not the sensor entities. The **Meter Reading** sensor updates every 6 hours and timestamps data at poll time, which causes consumption to appear on the wrong day. The external statistic uses the actual date reported by SEDIF, so the Energy dashboard shows accurate daily breakdowns.
 

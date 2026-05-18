@@ -27,8 +27,9 @@ def mock_recorder_before_hass(recorder_db_url: str) -> None:
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "secret"
 MOCK_CONTRACT_ID = "CONTRACT_001"
-MOCK_CONTRACT_NUMBER = "9235380"
+MOCK_CONTRACT_NUMBER = "1234567"
 MOCK_CONTRACTS = [{"id": MOCK_CONTRACT_ID, "number": MOCK_CONTRACT_NUMBER}]
+MOCK_PRICE_PER_M3 = 4.5
 
 
 @pytest.fixture
@@ -74,6 +75,23 @@ def make_consumption_record(
     return record
 
 
+def make_consumption_data(
+    records: list[MagicMock], price_per_m3: float = MOCK_PRICE_PER_M3
+) -> MagicMock:
+    """Create a mock ConsumptionData with records and price."""
+    data = MagicMock()
+    data.records = records
+    data.price_per_m3 = price_per_m3
+    data.daily_cost = lambda record: (record.consumption_liters / 1000) * price_per_m3
+    return data
+
+
+@pytest.fixture
+def mock_consumption_data(mock_record: MagicMock) -> MagicMock:
+    """Single-record ConsumptionData mock."""
+    return make_consumption_data([mock_record])
+
+
 @pytest.fixture
 def mock_records_list() -> list[MagicMock]:
     base = date(2026, 5, 11)
@@ -82,3 +100,9 @@ def mock_records_list() -> list[MagicMock]:
         make_consumption_record(base + timedelta(days=1), 120.0, 1234.12),
         make_consumption_record(base + timedelta(days=2), 150.0, 1234.27),
     ]
+
+
+@pytest.fixture
+def mock_consumption_data_list(mock_records_list: list[MagicMock]) -> MagicMock:
+    """Multi-record ConsumptionData mock."""
+    return make_consumption_data(mock_records_list)

@@ -18,7 +18,7 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfVolume
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
@@ -29,7 +29,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import VolumeConverter
 from pyeauidf import EauIDFClient
-from pyeauidf.client import AuthenticationError, ConsumptionRecord, EauIDFError
+from pyeauidf.client import (
+    AuthenticationError,
+    ConsumptionData,
+    ConsumptionRecord,
+    EauIDFError,
+)
 
 from .const import CONF_CONTRACTS, DOMAIN
 
@@ -56,7 +61,7 @@ class ContractData:
     is_estimated: bool
 
 
-type FetchResult = tuple[SedifData, dict[str, list[ConsumptionRecord]]]
+type FetchResult = tuple[SedifData, dict[str, ConsumptionData]]
 type SedifData = dict[str, ContractData]
 
 
@@ -88,9 +93,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             username, password, session=async_create_clientsession(self.hass)
         )
         try:
-            sensor_data, all_records = await self._fetch_all(
-                client, contracts, start_date
-            )
+            sensor_data, all_data = await self._fetch_all(client, contracts, start_date)
         except AuthenticationError as err:
             self._on_failure()
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -104,7 +107,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             raise UpdateFailed(msg) from err
         else:
             self._on_success()
-            await self._insert_statistics(all_records)
+            await self._insert_statistics(all_data)
             return sensor_data
         finally:
             await client.close()
@@ -119,16 +122,19 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
 
         for contract in contracts:
             statistic_id = f"{DOMAIN}:{contract['number']}_water_consumption"
-            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-                self.hass
-            ).async_add_executor_job(
-                get_last_statistics,  # type: ignore[arg-type]
-                self.hass,
-                1,
-                statistic_id,
-                True,  # noqa: FBT003
-                set(),
-            )
+            try:
+                last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                    self.hass
+                ).async_add_executor_job(
+                    get_last_statistics,  # type: ignore[arg-type]
+                    self.hass,
+                    1,
+                    statistic_id,
+                    True,  # noqa: FBT003
+                    set(),
+                )
+            except HomeAssistantError:
+                last_stat = {}
             if not last_stat:
                 _LOGGER.debug(
                     "No existing statistics for %s, importing %d days",
@@ -171,15 +177,22 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
 
     async def _insert_statistics(
         self,
-        records_by_contract: dict[str, list[ConsumptionRecord]],
+        data_by_contract: dict[str, ConsumptionData],
     ) -> None:
         """Import consumption records as external statistics."""
-        for contract_number, records in records_by_contract.items():
+        for contract_number, data in data_by_contract.items():
             try:
-                await self._insert_contract_statistics(contract_number, records)
+                await self._insert_contract_statistics(contract_number, data.records)
             except Exception:
                 _LOGGER.exception(
                     "Failed to insert statistics for contract %s",
+                    contract_number,
+                )
+            try:
+                await self._insert_cost_statistics(contract_number, data)
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to insert cost statistics for contract %s",
                     contract_number,
                 )
 
@@ -200,16 +213,20 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         )
 
-        last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-            self.hass
-        ).async_add_executor_job(
-            get_last_statistics,  # type: ignore[arg-type]
-            self.hass,
-            1,
-            statistic_id,
-            True,  # noqa: FBT003
-            set(),
-        )
+        try:
+            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                self.hass
+            ).async_add_executor_job(
+                get_last_statistics,  # type: ignore[arg-type]
+                self.hass,
+                1,
+                statistic_id,
+                True,  # noqa: FBT003
+                set(),
+            )
+        except HomeAssistantError:
+            _LOGGER.debug("No existing statistics for %s", statistic_id)
+            last_stat = {}
         last_stats_time: float | None = None
         if last_stat:
             raw_start = last_stat[statistic_id][0]["start"]
@@ -221,6 +238,8 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         local_tz = dt_util.get_default_time_zone()
         statistics: list[StatisticData] = []
         for record in sorted(records, key=lambda r: r.date):
+            if record.is_estimated:
+                continue
             d = record.date.date()
             start = datetime(d.year, d.month, d.day, tzinfo=local_tz)
             if last_stats_time is not None and start.timestamp() <= last_stats_time:
@@ -243,6 +262,76 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         else:
             _LOGGER.debug("No new statistics to insert for %s", statistic_id)
 
+    async def _insert_cost_statistics(
+        self,
+        contract_number: str,
+        data: ConsumptionData,
+    ) -> None:
+        """Import cost statistics for a single contract."""
+        statistic_id = f"{DOMAIN}:{contract_number}_water_cost"
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.NONE,
+            has_sum=True,
+            name=f"SEDIF {contract_number} water cost",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_class=None,
+            unit_of_measurement="EUR",
+        )
+
+        last_stats_time: float | None = None
+        running_sum: float = 0.0
+        try:
+            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                self.hass
+            ).async_add_executor_job(
+                get_last_statistics,  # type: ignore[arg-type]
+                self.hass,
+                1,
+                statistic_id,
+                True,  # noqa: FBT003
+                {"sum"},
+            )
+        except HomeAssistantError:
+            _LOGGER.debug("No existing cost statistics for %s", statistic_id)
+            last_stat = {}
+        if last_stat:
+            raw_start = last_stat[statistic_id][0]["start"]
+            if isinstance(raw_start, (int, float)):
+                last_stats_time = raw_start
+            else:
+                last_stats_time = raw_start.timestamp()
+            running_sum = last_stat[statistic_id][0].get("sum", 0.0) or 0.0
+
+        local_tz = dt_util.get_default_time_zone()
+        statistics: list[StatisticData] = []
+        for record in sorted(data.records, key=lambda r: r.date):
+            if record.is_estimated:
+                continue
+            d = record.date.date()
+            start = datetime(d.year, d.month, d.day, tzinfo=local_tz)
+            if last_stats_time is not None and start.timestamp() <= last_stats_time:
+                continue
+            daily_cost = data.daily_cost(record)
+            running_sum += daily_cost
+            statistics.append(
+                StatisticData(
+                    start=start,
+                    state=daily_cost,
+                    sum=running_sum,
+                )
+            )
+
+        async_add_external_statistics(self.hass, metadata, statistics)
+        if statistics:
+            _LOGGER.debug(
+                "Inserted %d cost statistics for %s",
+                len(statistics),
+                statistic_id,
+            )
+        else:
+            _LOGGER.debug("No new cost statistics to insert for %s", statistic_id)
+
     @staticmethod
     async def _fetch_all(
         client: EauIDFClient,
@@ -252,18 +341,18 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         """Fetch consumption data for all contracts."""
         await client.login()
         sensor_data: SedifData = {}
-        all_records: dict[str, list[ConsumptionRecord]] = {}
+        all_data: dict[str, ConsumptionData] = {}
         end = datetime.now(UTC).date()
         for contract in contracts:
             cid = contract["id"]
             number = contract["number"]
             try:
-                records = await client.get_daily_consumption(
+                data = await client.get_daily_consumption(
                     contract_id=cid, start_date=start_date, end_date=end
                 )
-                if records:
-                    all_records[number] = records
-                    latest = records[-1]
+                if data.records:
+                    all_data[number] = data
+                    latest = data.records[-1]
                     sensor_data[number] = ContractData(
                         meter_reading_m3=latest.meter_reading,
                         daily_consumption_l=latest.consumption_liters,
@@ -282,4 +371,4 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         if not sensor_data and contracts:
             msg = "Failed to fetch data for any contract"
             raise EauIDFError(msg)
-        return sensor_data, all_records
+        return sensor_data, all_data

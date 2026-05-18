@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -22,6 +22,7 @@ PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import date
 
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 class SedifSensorDescription(SensorEntityDescription):
     """Describe a SEDIF sensor."""
 
-    value_fn: Callable[[ContractData], Any]
+    value_fn: Callable[[ContractData], float | date]
     has_extra_attributes: bool = False
 
 
@@ -118,7 +119,7 @@ class SedifSensor(CoordinatorEntity[SedifCoordinator], SensorEntity):
         )
 
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> float | date | None:
         """Return the sensor value."""
         if not self.coordinator.data:
             return None
