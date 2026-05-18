@@ -280,6 +280,7 @@ async def test_statistics_values_correct(
         await coordinator.async_refresh()
 
     await hass.async_block_till_done()
+    await recorder_mock.async_block_till_done()
 
     stats = await hass.async_add_executor_job(
         get_last_statistics,
@@ -314,6 +315,7 @@ async def test_cost_statistics_inserted(
         await coordinator.async_refresh()
 
     await hass.async_block_till_done()
+    await recorder_mock.async_block_till_done()
 
     stats = await hass.async_add_executor_job(
         get_last_statistics,
