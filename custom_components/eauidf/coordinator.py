@@ -225,6 +225,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 set(),
             )
         except HomeAssistantError:
+            _LOGGER.debug("No existing statistics for %s", statistic_id)
             last_stat = {}
         last_stats_time: float | None = None
         if last_stat:
@@ -292,6 +293,7 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 {"sum"},
             )
         except HomeAssistantError:
+            _LOGGER.debug("No existing cost statistics for %s", statistic_id)
             last_stat = {}
         if last_stat:
             raw_start = last_stat[statistic_id][0]["start"]
