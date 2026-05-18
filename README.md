@@ -55,7 +55,7 @@ If installed via HACS, you can also uninstall the integration from HACS after re
 | **Email** | Yes | The email address used to log in to the SEDIF customer portal at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr). |
 | **Password** | Yes | The password for your SEDIF portal account. Stored locally in Home Assistant and only sent to the SEDIF portal for authentication. |
 
-Each contract appears as a separate device named **SEDIF Contract {number}** (e.g. "SEDIF Contract 9235380"), where the number matches your SEDIF contract reference.
+Each contract appears as a separate device named **SEDIF Contract {number}** (e.g. "SEDIF Contract XXXXXXX"), where the number matches your SEDIF contract reference.
 
 ## Entities
 

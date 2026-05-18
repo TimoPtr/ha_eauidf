@@ -27,7 +27,7 @@ def mock_recorder_before_hass(recorder_db_url: str) -> None:
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "secret"
 MOCK_CONTRACT_ID = "CONTRACT_001"
-MOCK_CONTRACT_NUMBER = "9235380"
+MOCK_CONTRACT_NUMBER = "1234567"
 MOCK_CONTRACTS = [{"id": MOCK_CONTRACT_ID, "number": MOCK_CONTRACT_NUMBER}]
 MOCK_PRICE_PER_M3 = 4.5
 

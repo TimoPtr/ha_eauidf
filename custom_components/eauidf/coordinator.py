@@ -18,7 +18,7 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfVolume
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
@@ -122,16 +122,19 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
 
         for contract in contracts:
             statistic_id = f"{DOMAIN}:{contract['number']}_water_consumption"
-            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-                self.hass
-            ).async_add_executor_job(
-                get_last_statistics,  # type: ignore[arg-type]
-                self.hass,
-                1,
-                statistic_id,
-                True,  # noqa: FBT003
-                set(),
-            )
+            try:
+                last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                    self.hass
+                ).async_add_executor_job(
+                    get_last_statistics,  # type: ignore[arg-type]
+                    self.hass,
+                    1,
+                    statistic_id,
+                    True,  # noqa: FBT003
+                    set(),
+                )
+            except HomeAssistantError:
+                last_stat = {}
             if not last_stat:
                 _LOGGER.debug(
                     "No existing statistics for %s, importing %d days",
@@ -210,16 +213,19 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         )
 
-        last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-            self.hass
-        ).async_add_executor_job(
-            get_last_statistics,  # type: ignore[arg-type]
-            self.hass,
-            1,
-            statistic_id,
-            True,  # noqa: FBT003
-            set(),
-        )
+        try:
+            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                self.hass
+            ).async_add_executor_job(
+                get_last_statistics,  # type: ignore[arg-type]
+                self.hass,
+                1,
+                statistic_id,
+                True,  # noqa: FBT003
+                set(),
+            )
+        except HomeAssistantError:
+            last_stat = {}
         last_stats_time: float | None = None
         if last_stat:
             raw_start = last_stat[statistic_id][0]["start"]
@@ -272,18 +278,21 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             unit_of_measurement="EUR",
         )
 
-        last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-            self.hass
-        ).async_add_executor_job(
-            get_last_statistics,  # type: ignore[arg-type]
-            self.hass,
-            1,
-            statistic_id,
-            True,  # noqa: FBT003
-            {"sum"},
-        )
         last_stats_time: float | None = None
         running_sum: float = 0.0
+        try:
+            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
+                self.hass
+            ).async_add_executor_job(
+                get_last_statistics,  # type: ignore[arg-type]
+                self.hass,
+                1,
+                statistic_id,
+                True,  # noqa: FBT003
+                {"sum"},
+            )
+        except HomeAssistantError:
+            last_stat = {}
         if last_stat:
             raw_start = last_stat[statistic_id][0]["start"]
             if isinstance(raw_start, (int, float)):

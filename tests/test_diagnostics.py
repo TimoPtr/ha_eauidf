@@ -27,7 +27,7 @@ async def test_diagnostics_redacts_credentials(
     init_client.login = AsyncMock()
     init_client.get_contracts = AsyncMock(return_value=[MOCK_CONTRACT_ID])
     init_client.get_contract_details = AsyncMock(
-        return_value={"contrat": {"Name": "9235380"}}
+        return_value={"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
     )
 
     coord_client = MagicMock()
