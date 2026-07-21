@@ -19,7 +19,7 @@ jobs:
         uses: "hacs/action@dcb30e72781db3f207d5236b861172774ab0b485"  # main
         with:
           category: "integration"
-      - uses: home-assistant/actions/hassfest@868e6cb4607727d764341a158d98872cd63fa658  # master
+      - uses: home-assistant/actions/hassfest@e3fb68ebda13d88a0d695082f471ba2c83d025fb  # master
 
   lint:
     runs-on: ubuntu-latest
