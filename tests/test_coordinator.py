@@ -1,6 +1,6 @@
 """Tests for the coordinator."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +25,7 @@ from tests.conftest import (
     MOCK_CONTRACT_NUMBER,
     MOCK_PRICE_PER_M3,
     make_consumption_data,
+    make_consumption_record,
 )
 
 PATCH_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
@@ -54,6 +55,71 @@ async def test_fetch_success(
     assert data.daily_consumption_l == record.consumption_liters
     assert data.last_date == record.date.date()
     assert data.is_estimated == record.is_estimated
+
+
+async def test_fetch_uses_latest_confirmed_reading(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """Sensor state should reflect the latest non-estimated reading.
+
+    SEDIF can revise an estimated reading downward to a lower real value.
+    Because meter_reading is total_increasing, tracking the estimated tail
+    makes the sensor decrease. See TimoPtr/ha_eauidf#26.
+    """
+    confirmed_old = make_consumption_record(date(2026, 6, 28), 250.0, 105.800)
+    confirmed = make_consumption_record(date(2026, 6, 29), 265.0, 105.900)
+    estimated = make_consumption_record(date(2026, 6, 30), 240.0, 105.927)
+    estimated.is_estimated = True
+    # Chronological order, latest record estimated: the realistic SEDIF case.
+    # The earlier confirmed record proves selection picks the latest by date,
+    # not merely the first non-estimated record.
+    data = make_consumption_data([confirmed_old, confirmed, estimated])
+
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=data)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    result = coordinator.data[MOCK_CONTRACT_NUMBER]
+    assert result.meter_reading_m3 == confirmed.meter_reading
+    assert result.daily_consumption_l == confirmed.consumption_liters
+    assert result.last_date == confirmed.date.date()
+    assert result.is_estimated is False
+
+
+async def test_fetch_falls_back_to_latest_when_all_estimated(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """When every record is estimated, fall back to the latest one by date."""
+    older = make_consumption_record(date(2026, 6, 29), 265.0, 105.900)
+    older.is_estimated = True
+    newer = make_consumption_record(date(2026, 6, 30), 240.0, 105.927)
+    newer.is_estimated = True
+    data = make_consumption_data([older, newer])
+
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_daily_consumption = AsyncMock(return_value=data)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    result = coordinator.data[MOCK_CONTRACT_NUMBER]
+    assert result.meter_reading_m3 == newer.meter_reading
+    assert result.last_date == newer.date.date()
+    assert result.is_estimated is True
 
 
 async def test_fetch_auth_error_raises(
