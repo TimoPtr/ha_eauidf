@@ -352,7 +352,18 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 )
                 if data.records:
                     all_data[number] = data
-                    latest = data.records[-1]
+                    # SEDIF revises estimated readings, sometimes downward to a
+                    # lower real value. The meter_reading sensor is
+                    # total_increasing, so back it with the latest *confirmed*
+                    # reading to stay monotonic (matching the statistics import,
+                    # which also skips estimated records). Fall back to the
+                    # latest record overall when nothing is confirmed yet.
+                    # See TimoPtr/ha_eauidf#26.
+                    confirmed = [r for r in data.records if not r.is_estimated]
+                    latest = max(
+                        confirmed or data.records,
+                        key=lambda r: r.date,
+                    )
                     sensor_data[number] = ContractData(
                         meter_reading_m3=latest.meter_reading,
                         daily_consumption_l=latest.consumption_liters,
