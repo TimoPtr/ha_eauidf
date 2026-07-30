@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Timothy
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Sensor platform for L'eau d'Ile-de-France."""
 
 from __future__ import annotations

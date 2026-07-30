@@ -1,2 +1,2 @@
-# Copyright (c) 2026 Timothy
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Custom components."""

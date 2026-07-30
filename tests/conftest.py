@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Timothy
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Shared fixtures for eauidf tests."""
 
 from datetime import UTC, date, datetime, timedelta

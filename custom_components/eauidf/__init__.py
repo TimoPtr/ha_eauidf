@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Timothy
+# Copyright (c) 2026 Timothy (TimoPtr)
 """L'eau d'Ile-de-France integration."""
 
 from __future__ import annotations

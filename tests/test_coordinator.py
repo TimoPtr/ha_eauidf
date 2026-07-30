@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Timothy
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Tests for the coordinator."""
 
 from datetime import UTC, date, datetime, timedelta
