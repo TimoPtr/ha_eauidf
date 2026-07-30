@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy
 """Shared fixtures for eauidf tests."""
 
 from datetime import UTC, date, datetime, timedelta

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy
 """Data update coordinator for L'eau d'Ile-de-France."""
 
 from __future__ import annotations

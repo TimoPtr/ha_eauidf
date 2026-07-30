@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy
 """Diagnostics support for L'eau d'Ile-de-France."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy
 """Tests for the coordinator."""
 
 from datetime import UTC, date, datetime, timedelta
