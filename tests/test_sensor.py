@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Tests for the sensor platform."""
 
 from unittest.mock import AsyncMock, MagicMock, patch

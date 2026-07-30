@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Timothy (TimoPtr)
 """Config flow for L'eau d'Ile-de-France."""
 
 from __future__ import annotations
