@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Timothy (TimoPtr)
 """Shared fixtures for eauidf tests."""
 
+import logging
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -19,6 +21,27 @@ def auto_enable_custom_integrations(
     enable_custom_integrations: None,
 ) -> None:
     """Enable custom integrations for all tests."""
+
+
+@pytest.fixture(autouse=True)
+def fail_on_deprecated_usage(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
+    """
+    Fail any test in which Home Assistant reports a deprecated usage.
+
+    Home Assistant reports these through its frame helper. For core
+    integrations it raises, for custom integrations it only logs a warning
+    that is easy to miss, so treat those reports as errors here.
+    """
+    yield
+    reports = [
+        record.getMessage()
+        for when in ("setup", "call")
+        for record in caplog.get_records(when)
+        if record.name == "homeassistant.helpers.frame"
+        and record.levelno >= logging.WARNING
+    ]
+    if reports:
+        pytest.fail("Deprecated usage reported:\n" + "\n".join(reports))
 
 
 @pytest.fixture

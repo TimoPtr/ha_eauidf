@@ -74,9 +74,7 @@ def async_remove_stale_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
     dev_reg = dr.async_get(hass)
     for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
         if not is_current_contract_device(entry, device):
-            dev_reg.async_update_device(
-                device.id, remove_config_entry_id=entry.entry_id
-            )
+            dev_reg.async_remove_device(device.id)
 
 
 @dataclass
