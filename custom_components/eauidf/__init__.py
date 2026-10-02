@@ -7,8 +7,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.device_registry import async_get as async_get_dev_reg
 from pyeauidf import EauIDFClient
 from pyeauidf.client import EauIDFError
 
@@ -29,6 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: EauIDFConfigEntry) -> bool:
     """Set up L'eau d'Ile-de-France from a config entry."""
     await _refresh_contracts(hass, entry)
+    _remove_stale_devices(hass, entry)
 
     coordinator = SedifCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
@@ -44,7 +45,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: EauIDFConfigEntry) -> b
 
 
 async def _refresh_contracts(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Refresh contract list from the API and remove stale devices."""
+    """Refresh the contract list stored in the entry from the API."""
     session = async_create_clientsession(hass)
     client = EauIDFClient(
         entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD], session=session
@@ -62,20 +63,40 @@ async def _refresh_contracts(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.debug("Could not refresh contracts, using cached list")
         return
 
-    old_contracts = entry.data.get(CONF_CONTRACTS, [])
-    if contracts == old_contracts:
-        return
+    if contracts != entry.data.get(CONF_CONTRACTS, []):
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_CONTRACTS: contracts}
+        )
 
-    hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_CONTRACTS: contracts}
+
+def _is_current_contract_device(entry: ConfigEntry, device: dr.DeviceEntry) -> bool:
+    """Return whether the device belongs to a contract currently on the account."""
+    return any(
+        (DOMAIN, contract["number"]) in device.identifiers
+        for contract in entry.data.get(CONF_CONTRACTS, [])
     )
 
-    old_numbers = {c["number"] for c in old_contracts}
-    new_numbers = {c["number"] for c in contracts}
-    removed = old_numbers - new_numbers
-    if removed:
-        dev_reg = async_get_dev_reg(hass)
-        for number in removed:
-            device = dev_reg.async_get_device(identifiers={(DOMAIN, number)})
-            if device:
-                dev_reg.async_remove_device(device.id)
+
+def _remove_stale_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """
+    Remove devices that no longer match a contract on the account.
+
+    This covers contracts closed on the SEDIF side and devices left over from
+    versions that identified contracts by their opaque API id, which changes
+    over time, instead of the contract number.
+    """
+    dev_reg = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        if not _is_current_contract_device(entry, device):
+            dev_reg.async_update_device(
+                device.id, remove_config_entry_id=entry.entry_id
+            )
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,  # noqa: ARG001
+    config_entry: EauIDFConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow the user to delete a device that is not a current contract."""
+    return not _is_current_contract_device(config_entry, device_entry)
