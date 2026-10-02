@@ -4,16 +4,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from pyeauidf import EauIDFClient
 from pyeauidf.client import AuthenticationError, EauIDFError
 
+from .api import async_fetch_contracts, contracts_to_data
 from .const import CONF_CONTRACTS, DOMAIN
+
+if TYPE_CHECKING:
+    from pyeauidf import Contract
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during config flow")
-                errors["base"] = "cannot_connect"
+                errors["base"] = "unknown"
             else:
                 if not contracts:
                     errors["base"] = "no_contracts"
@@ -62,7 +64,7 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                         data={
                             CONF_USERNAME: user_input[CONF_USERNAME],
                             CONF_PASSWORD: user_input[CONF_PASSWORD],
-                            CONF_CONTRACTS: contracts,
+                            CONF_CONTRACTS: contracts_to_data(contracts),
                         },
                     )
 
@@ -100,13 +102,13 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during reauth")
-                errors["base"] = "cannot_connect"
+                errors["base"] = "unknown"
             else:
                 return self.async_update_reload_and_abort(
                     reauth_entry,
                     data_updates={
                         CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_CONTRACTS: contracts,
+                        CONF_CONTRACTS: contracts_to_data(contracts),
                     },
                 )
 
@@ -140,7 +142,7 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during reconfiguration")
-                errors["base"] = "cannot_connect"
+                errors["base"] = "unknown"
             else:
                 if not contracts:
                     errors["base"] = "no_contracts"
@@ -149,7 +151,7 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
                         reconfigure_entry,
                         data_updates={
                             CONF_PASSWORD: user_input[CONF_PASSWORD],
-                            CONF_CONTRACTS: contracts,
+                            CONF_CONTRACTS: contracts_to_data(contracts),
                         },
                     )
 
@@ -161,20 +163,6 @@ class EauIDFConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _validate_and_fetch_contracts(
         self, username: str, password: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Contract]:
         """Validate credentials and return contract list."""
-        client = EauIDFClient(
-            username, password, session=async_create_clientsession(self.hass)
-        )
-        try:
-            await client.login()
-            contract_ids = await client.get_contracts()
-            contracts = []
-            for cid in contract_ids:
-                details = await client.get_contract_details(cid)
-                contrat = details.get("contrat", {})
-                number = contrat.get("Name", cid)
-                contracts.append({"id": cid, "number": str(number)})
-            return contracts
-        finally:
-            await client.close()
+        return await async_fetch_contracts(self.hass, username, password)

@@ -12,9 +12,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components import eauidf
 from custom_components.eauidf.const import CONF_CONTRACTS, DOMAIN
-from tests.conftest import MOCK_CONTRACT_NUMBER, MOCK_CONTRACTS, make_consumption_data
+from tests.conftest import (
+    MOCK_ACTIVE_CONTRACTS,
+    MOCK_CONTRACT_NUMBER,
+    MOCK_CONTRACTS,
+    make_consumption_data,
+)
 
-PATCH_INIT_CLIENT = "custom_components.eauidf.EauIDFClient"
 PATCH_COORD_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 
 # Identifier used by pre-release versions (before v1.0.0), keyed on the SEDIF
@@ -22,20 +26,11 @@ PATCH_COORD_CLIENT = "custom_components.eauidf.coordinator.EauIDFClient"
 LEGACY_IDENTIFIER = "iMvSQcY23KUv%2F"
 
 
-def _make_init_client(*, fail: bool = False) -> MagicMock:
+def _make_coord_client(mock_record: MagicMock, *, fail: bool = False) -> MagicMock:
     client = MagicMock()
     client.login = AsyncMock(side_effect=EauIDFError("down") if fail else None)
-    client.get_contracts = AsyncMock(return_value=[MOCK_CONTRACTS[0]["id"]])
-    client.get_contract_details = AsyncMock(
-        return_value={"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
-    )
-    return client
-
-
-def _make_coord_client(mock_record: MagicMock) -> MagicMock:
-    client = MagicMock()
-    client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(
         return_value=make_consumption_data([mock_record])
     )
@@ -67,9 +62,9 @@ async def _setup_integration(
     *,
     api_down: bool = False,
 ) -> None:
-    with (
-        patch(PATCH_INIT_CLIENT, return_value=_make_init_client(fail=api_down)),
-        patch(PATCH_COORD_CLIENT, return_value=_make_coord_client(mock_record)),
+    with patch(
+        PATCH_COORD_CLIENT,
+        return_value=_make_coord_client(mock_record, fail=api_down),
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

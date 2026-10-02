@@ -27,7 +27,8 @@
     "error": {
       "invalid_auth": "Invalid credentials.",
       "cannot_connect": "Unable to connect to the SEDIF portal.",
-      "no_contracts": "No active contracts found for this account."
+      "no_contracts": "No active contracts found for this account.",
+      "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This account is already configured.",
@@ -52,6 +53,17 @@
     "persistent_update_failure": {
       "title": "SEDIF portal unreachable",
       "description": "The integration has failed to fetch data from the SEDIF portal multiple times in a row. Check that the portal is accessible at {portal_url} and try reconfiguring the integration."
+    }
+  },
+  "exceptions": {
+    "authentication_failed": {
+      "message": "Authentication with the SEDIF portal failed. Please re-authenticate."
+    },
+    "update_failed": {
+      "message": "Error fetching data from the SEDIF portal: {error}"
+    },
+    "unexpected_error": {
+      "message": "Unexpected error fetching data from the SEDIF portal: {error}"
     }
   }
 }

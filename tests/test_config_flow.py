@@ -7,29 +7,26 @@ from homeassistant import config_entries
 from homeassistant.components.recorder import Recorder
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from pyeauidf import Contract
 from pyeauidf.client import AuthenticationError, EauIDFError
 
 from custom_components.eauidf.const import CONF_CONTRACTS, DOMAIN
 from tests.conftest import (
-    MOCK_CONTRACT_ID,
-    MOCK_CONTRACT_NUMBER,
+    MOCK_ACTIVE_CONTRACTS,
     MOCK_CONTRACTS,
     MOCK_PASSWORD,
     MOCK_USERNAME,
 )
 
-PATCH_CLIENT = "custom_components.eauidf.config_flow.EauIDFClient"
+PATCH_CLIENT = "custom_components.eauidf.api.EauIDFClient"
 
 
-def _make_client(contract_ids: list | None = None) -> MagicMock:
+def _make_client(contracts: list[Contract] | None = None) -> MagicMock:
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
-    client.get_contracts = AsyncMock(
-        return_value=contract_ids if contract_ids is not None else [MOCK_CONTRACT_ID]
-    )
-    client.get_contract_details = AsyncMock(
-        return_value={"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
+    client.get_active_contracts = AsyncMock(
+        return_value=MOCK_ACTIVE_CONTRACTS if contracts is None else contracts
     )
     return client
 
@@ -119,13 +116,13 @@ async def test_user_step_unexpected_error(
         )
 
     assert result["type"] == "form"
-    assert result["errors"]["base"] == "cannot_connect"
+    assert result["errors"]["base"] == "unknown"
 
 
 async def test_user_step_no_contracts(
     recorder_mock: Recorder, hass: HomeAssistant
 ) -> None:
-    with patch(PATCH_CLIENT, return_value=_make_client(contract_ids=[])):
+    with patch(PATCH_CLIENT, return_value=_make_client(contracts=[])):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
@@ -175,6 +172,7 @@ async def test_reauth_success(
     coord_client = MagicMock()
     coord_client.login = AsyncMock()
     coord_client.close = AsyncMock()
+    coord_client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     coord_client.get_daily_consumption = AsyncMock(return_value=[mock_record])
 
     with (
@@ -255,24 +253,14 @@ async def test_reconfigure_success(
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 
-    init_client = MagicMock()
-    init_client.login = AsyncMock()
-    init_client.get_contracts = AsyncMock(return_value=[MOCK_CONTRACT_ID])
-    init_client.get_contract_details = AsyncMock(
-        return_value={"contrat": {"Name": MOCK_CONTRACT_NUMBER}}
-    )
-
     coord_client = MagicMock()
     coord_client.login = AsyncMock()
     coord_client.close = AsyncMock()
+    coord_client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     coord_client.get_daily_consumption = AsyncMock(return_value=[mock_record])
 
     with (
         patch(PATCH_CLIENT, return_value=_make_client()),
-        patch(
-            "custom_components.eauidf.EauIDFClient",
-            return_value=init_client,
-        ),
         patch(
             "custom_components.eauidf.coordinator.EauIDFClient",
             return_value=coord_client,
@@ -319,7 +307,7 @@ async def test_reconfigure_no_contracts(
 ) -> None:
     mock_config_entry.add_to_hass(hass)
 
-    with patch(PATCH_CLIENT, return_value=_make_client(contract_ids=[])):
+    with patch(PATCH_CLIENT, return_value=_make_client(contracts=[])):
         result = await mock_config_entry.start_reconfigure_flow(hass)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -328,3 +316,91 @@ async def test_reconfigure_no_contracts(
 
     assert result["type"] == "form"
     assert result["errors"]["base"] == "no_contracts"
+
+
+async def test_reauth_unexpected_error(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.login = AsyncMock(side_effect=RuntimeError("boom"))
+    client.close = AsyncMock()
+
+    with patch(PATCH_CLIENT, return_value=client):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "unknown"
+
+
+async def test_reconfigure_cannot_connect(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.login = AsyncMock(side_effect=EauIDFError("portal down"))
+    client.close = AsyncMock()
+
+    with patch(PATCH_CLIENT, return_value=client):
+        result = await mock_config_entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "cannot_connect"
+
+
+async def test_reconfigure_unexpected_error(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.login = AsyncMock(side_effect=RuntimeError("boom"))
+    client.close = AsyncMock()
+
+    with patch(PATCH_CLIENT, return_value=client):
+        result = await mock_config_entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "unknown"
+
+
+async def test_session_detached_after_validation(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The short-lived session used to validate credentials is detached."""
+    session = MagicMock()
+    session.close = AsyncMock()
+
+    with (
+        patch(PATCH_CLIENT, return_value=_make_client()),
+        patch(
+            "custom_components.eauidf.api.async_create_clientsession",
+            return_value=session,
+        ) as create_session,
+        patch("custom_components.eauidf.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert create_session.call_args.kwargs["auto_cleanup"] is False
+    session.detach.assert_called_once()
+    session.close.assert_not_awaited()

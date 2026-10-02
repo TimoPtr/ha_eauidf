@@ -62,11 +62,7 @@ rules:
   entity-device-class: done
   entity-disabled-by-default: done
   entity-translations: done
-  exception-translations:
-    status: exempt
-    comment: |
-      This integration does not provide any actions/services, so no
-      user-facing exceptions are raised that require translation.
+  exception-translations: done
   icon-translations: done
   reconfiguration-flow: done
   repair-issues: done

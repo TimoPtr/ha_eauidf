@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from pyeauidf import Contract
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eauidf.const import CONF_CONTRACTS, DOMAIN
@@ -30,6 +31,9 @@ MOCK_PASSWORD = "secret"
 MOCK_CONTRACT_ID = "CONTRACT_001"
 MOCK_CONTRACT_NUMBER = "1234567"
 MOCK_CONTRACTS = [{"id": MOCK_CONTRACT_ID, "number": MOCK_CONTRACT_NUMBER}]
+MOCK_ACTIVE_CONTRACTS = [
+    Contract(contract_id=MOCK_CONTRACT_ID, number=MOCK_CONTRACT_NUMBER)
+]
 MOCK_PRICE_PER_M3 = 4.5
 
 
