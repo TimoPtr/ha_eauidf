@@ -6,30 +6,32 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Literal
 
-from homeassistant.components.recorder import get_instance  # type: ignore[attr-defined]
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
     StatisticMetaData,
 )
 from homeassistant.components.recorder.statistics import (
+    StatisticsRow,
     async_add_external_statistics,
     get_last_statistics,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfVolume
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
     async_create_issue,
     async_delete_issue,
 )
+from homeassistant.helpers.recorder import get_instance
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import VolumeConverter
-from pyeauidf import EauIDFClient
+from pyeauidf import Contract, EauIDFClient
 from pyeauidf.client import (
     AuthenticationError,
     ConsumptionData,
@@ -37,6 +39,7 @@ from pyeauidf.client import (
     EauIDFError,
 )
 
+from .api import contracts_to_data, entry_contracts
 from .const import CONF_CONTRACTS, DOMAIN
 
 if TYPE_CHECKING:
@@ -50,6 +53,30 @@ CONSECUTIVE_FAILURE_THRESHOLD = 3
 ISSUE_ID_PERSISTENT_FAILURE = "persistent_update_failure"
 HISTORY_DAYS_FIRST_IMPORT = 90
 HISTORY_DAYS_INCREMENTAL = 7
+
+
+def is_current_contract_device(entry: ConfigEntry, device: dr.DeviceEntry) -> bool:
+    """Return whether the device belongs to a contract currently on the account."""
+    return any(
+        (DOMAIN, contract.number) in device.identifiers
+        for contract in entry_contracts(entry)
+    )
+
+
+def async_remove_stale_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """
+    Remove devices that no longer match a contract on the account.
+
+    This covers contracts closed on the SEDIF side and devices left over from
+    versions that identified contracts by their opaque API id, which changes
+    over time, instead of the contract number.
+    """
+    dev_reg = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        if not is_current_contract_device(entry, device):
+            dev_reg.async_update_device(
+                device.id, remove_config_entry_id=entry.entry_id
+            )
 
 
 @dataclass
@@ -81,31 +108,41 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         )
         self.config_entry = entry
         self._consecutive_failures = 0
+        # A dedicated session keeps the SEDIF login cookies out of the shared one.
+        # Created during entry setup, HA detaches it when the entry is unloaded.
+        self._session = async_create_clientsession(hass)
 
     async def _async_update_data(self) -> SedifData:
         """Fetch data for all contracts."""
         username = self.config_entry.data[CONF_USERNAME]
         password = self.config_entry.data[CONF_PASSWORD]
-        contracts = self.config_entry.data[CONF_CONTRACTS]
 
-        start_date = await self._compute_start_date(contracts)
-
-        client = EauIDFClient(
-            username, password, session=async_create_clientsession(self.hass)
-        )
+        client = EauIDFClient(username, password, session=self._session)
         try:
+            await client.login()
+            contracts = await self._async_refresh_contracts(client)
+            start_date = await self._compute_start_date(contracts)
             sensor_data, all_data = await self._fetch_all(client, contracts, start_date)
         except AuthenticationError as err:
             self._on_failure()
-            raise ConfigEntryAuthFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="authentication_failed",
+            ) from err
         except EauIDFError as err:
             self._on_failure()
-            msg = f"Error fetching SEDIF data: {err}"
-            raise UpdateFailed(msg) from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         except Exception as err:
             self._on_failure()
-            msg = f"Unexpected error fetching SEDIF data: {err}"
-            raise UpdateFailed(msg) from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="unexpected_error",
+                translation_placeholders={"error": str(err)},
+            ) from err
         else:
             self._on_success()
             await self._insert_statistics(all_data)
@@ -113,30 +150,36 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         finally:
             await client.close()
 
+    async def _async_refresh_contracts(self, client: EauIDFClient) -> list[Contract]:
+        """Update the stored contracts from the account and drop removed ones."""
+        contracts = await client.get_active_contracts()
+        if not contracts:
+            # Most likely a portal glitch: keep the known contracts and devices.
+            msg = "No active contracts returned"
+            raise EauIDFError(msg)
+        if contracts != entry_contracts(self.config_entry):
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data={
+                    **self.config_entry.data,
+                    CONF_CONTRACTS: contracts_to_data(contracts),
+                },
+            )
+            async_remove_stale_devices(self.hass, self.config_entry)
+        return contracts
+
     async def _compute_start_date(
         self,
-        contracts: list[dict[str, str]],
+        contracts: list[Contract],
     ) -> date:
         """Determine how far back to fetch based on existing statistics."""
         today = datetime.now(UTC).date()
         earliest = today - timedelta(days=HISTORY_DAYS_INCREMENTAL)
 
         for contract in contracts:
-            statistic_id = f"{DOMAIN}:{contract['number']}_water_consumption"
-            try:
-                last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-                    self.hass
-                ).async_add_executor_job(
-                    get_last_statistics,  # type: ignore[arg-type]
-                    self.hass,
-                    1,
-                    statistic_id,
-                    True,  # noqa: FBT003
-                    set(),
-                )
-            except HomeAssistantError:
-                last_stat = {}
-            if not last_stat:
+            statistic_id = f"{DOMAIN}:{contract.number}_water_consumption"
+            last_row = await self._async_get_last_statistic(statistic_id, set())
+            if last_row is None:
                 _LOGGER.debug(
                     "No existing statistics for %s, importing %d days",
                     statistic_id,
@@ -144,15 +187,32 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
                 )
                 return today - timedelta(days=HISTORY_DAYS_FIRST_IMPORT)
 
-            last_start = last_stat[statistic_id][0]["start"]
-            if isinstance(last_start, (int, float)):
-                contract_date = datetime.fromtimestamp(last_start, tz=UTC).date()
-            else:
-                contract_date = last_start.date()
+            contract_date = datetime.fromtimestamp(last_row["start"], tz=UTC).date()
             earliest = min(earliest, contract_date)
 
         _LOGGER.debug("Fetching consumption data from %s", earliest)
         return earliest
+
+    async def _async_get_last_statistic(
+        self,
+        statistic_id: str,
+        types: set[Literal["last_reset", "max", "mean", "min", "state", "sum"]],
+    ) -> StatisticsRow | None:
+        """Return the most recent row of a statistic, or None if there is none."""
+        try:
+            last_stat = await get_instance(self.hass).async_add_executor_job(
+                get_last_statistics,
+                self.hass,
+                1,
+                statistic_id,
+                True,  # noqa: FBT003
+                types,
+            )
+        except HomeAssistantError:
+            _LOGGER.debug("Could not read statistics for %s", statistic_id)
+            return None
+        rows = last_stat.get(statistic_id)
+        return rows[0] if rows else None
 
     def _on_success(self) -> None:
         """Reset failure counter and dismiss any repair issue."""
@@ -214,27 +274,8 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         )
 
-        try:
-            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-                self.hass
-            ).async_add_executor_job(
-                get_last_statistics,  # type: ignore[arg-type]
-                self.hass,
-                1,
-                statistic_id,
-                True,  # noqa: FBT003
-                set(),
-            )
-        except HomeAssistantError:
-            _LOGGER.debug("No existing statistics for %s", statistic_id)
-            last_stat = {}
-        last_stats_time: float | None = None
-        if last_stat:
-            raw_start = last_stat[statistic_id][0]["start"]
-            if isinstance(raw_start, (int, float)):
-                last_stats_time = raw_start
-            else:
-                last_stats_time = raw_start.timestamp()
+        last_row = await self._async_get_last_statistic(statistic_id, set())
+        last_stats_time = last_row["start"] if last_row else None
 
         local_tz = dt_util.get_default_time_zone()
         statistics: list[StatisticData] = []
@@ -280,29 +321,9 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             unit_of_measurement="EUR",
         )
 
-        last_stats_time: float | None = None
-        running_sum: float = 0.0
-        try:
-            last_stat: dict[str, list[dict[str, Any]]] = await get_instance(
-                self.hass
-            ).async_add_executor_job(
-                get_last_statistics,  # type: ignore[arg-type]
-                self.hass,
-                1,
-                statistic_id,
-                True,  # noqa: FBT003
-                {"sum"},
-            )
-        except HomeAssistantError:
-            _LOGGER.debug("No existing cost statistics for %s", statistic_id)
-            last_stat = {}
-        if last_stat:
-            raw_start = last_stat[statistic_id][0]["start"]
-            if isinstance(raw_start, (int, float)):
-                last_stats_time = raw_start
-            else:
-                last_stats_time = raw_start.timestamp()
-            running_sum = last_stat[statistic_id][0].get("sum", 0.0) or 0.0
+        last_row = await self._async_get_last_statistic(statistic_id, {"sum"})
+        last_stats_time = last_row["start"] if last_row else None
+        running_sum: float = (last_row.get("sum") or 0.0) if last_row else 0.0
 
         local_tz = dt_util.get_default_time_zone()
         statistics: list[StatisticData] = []
@@ -336,20 +357,20 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
     @staticmethod
     async def _fetch_all(
         client: EauIDFClient,
-        contracts: list[dict[str, str]],
+        contracts: list[Contract],
         start_date: date,
     ) -> FetchResult:
         """Fetch consumption data for all contracts."""
-        await client.login()
         sensor_data: SedifData = {}
         all_data: dict[str, ConsumptionData] = {}
         end = datetime.now(UTC).date()
         for contract in contracts:
-            cid = contract["id"]
-            number = contract["number"]
+            number = contract.number
             try:
                 data = await client.get_daily_consumption(
-                    contract_id=cid, start_date=start_date, end_date=end
+                    contract=contract,
+                    start_date=start_date,
+                    end_date=end,
                 )
                 if data.records:
                     all_data[number] = data

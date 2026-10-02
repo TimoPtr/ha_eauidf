@@ -27,7 +27,8 @@
     "error": {
       "invalid_auth": "Identifiants invalides.",
       "cannot_connect": "Impossible de se connecter au portail SEDIF.",
-      "no_contracts": "Aucun contrat actif trouv\u00e9 pour ce compte."
+      "no_contracts": "Aucun contrat actif trouv\u00e9 pour ce compte.",
+      "unknown": "Erreur inattendue."
     },
     "abort": {
       "already_configured": "Ce compte est d\u00e9j\u00e0 configur\u00e9.",
@@ -52,6 +53,17 @@
     "persistent_update_failure": {
       "title": "Portail SEDIF inaccessible",
       "description": "L'int\u00e9gration n'a pas r\u00e9ussi \u00e0 r\u00e9cup\u00e9rer les donn\u00e9es du portail SEDIF \u00e0 plusieurs reprises. V\u00e9rifiez que le portail est accessible \u00e0 {portal_url} et essayez de reconfigurer l'int\u00e9gration."
+    }
+  },
+  "exceptions": {
+    "authentication_failed": {
+      "message": "L'authentification sur le portail SEDIF a \u00e9chou\u00e9. Veuillez vous r\u00e9-authentifier."
+    },
+    "update_failed": {
+      "message": "Erreur lors de la r\u00e9cup\u00e9ration des donn\u00e9es du portail SEDIF : {error}"
+    },
+    "unexpected_error": {
+      "message": "Erreur inattendue lors de la r\u00e9cup\u00e9ration des donn\u00e9es du portail SEDIF : {error}"
     }
   }
 }

@@ -8,12 +8,12 @@ import pytest
 from homeassistant.components.recorder import Recorder
 from homeassistant.components.recorder.statistics import get_last_statistics
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.issue_registry import async_get as async_get_issue_reg
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pyeauidf.client import AuthenticationError, EauIDFError
 
-from custom_components.eauidf.const import DOMAIN
+from custom_components.eauidf.const import CONF_CONTRACTS, DOMAIN
 from custom_components.eauidf.coordinator import (
     CONSECUTIVE_FAILURE_THRESHOLD,
     HISTORY_DAYS_FIRST_IMPORT,
@@ -23,7 +23,9 @@ from custom_components.eauidf.coordinator import (
     SedifCoordinator,
 )
 from tests.conftest import (
+    MOCK_ACTIVE_CONTRACTS,
     MOCK_CONTRACT_NUMBER,
+    MOCK_CONTRACTS,
     MOCK_PRICE_PER_M3,
     make_consumption_data,
     make_consumption_record,
@@ -42,6 +44,7 @@ async def test_fetch_success(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -82,6 +85,7 @@ async def test_fetch_uses_latest_confirmed_reading(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=data)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -111,6 +115,7 @@ async def test_fetch_falls_back_to_latest_when_all_estimated(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=data)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -137,6 +142,29 @@ async def test_fetch_auth_error_raises(
 
     assert not coordinator.last_update_success
     assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "authentication_failed"
+
+
+async def test_contract_auth_error_raises(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_config_entry
+) -> None:
+    """An auth error while fetching a contract triggers reauth, not a skip."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(side_effect=AuthenticationError("expired"))
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "authentication_failed"
 
 
 async def test_fetch_api_error_raises(
@@ -153,6 +181,8 @@ async def test_fetch_api_error_raises(
 
     assert not coordinator.last_update_success
     assert isinstance(coordinator.last_exception, UpdateFailed)
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "update_failed"
 
 
 async def test_fetch_unexpected_error_raises(
@@ -169,6 +199,8 @@ async def test_fetch_unexpected_error_raises(
 
     assert not coordinator.last_update_success
     assert isinstance(coordinator.last_exception, UpdateFailed)
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "unexpected_error"
 
 
 async def test_fetch_empty_records_raises(
@@ -179,6 +211,7 @@ async def test_fetch_empty_records_raises(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=make_consumption_data([]))
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -187,6 +220,8 @@ async def test_fetch_empty_records_raises(
 
     assert not coordinator.last_update_success
     assert isinstance(coordinator.last_exception, UpdateFailed)
+    assert coordinator.last_exception.translation_domain == DOMAIN
+    assert coordinator.last_exception.translation_key == "update_failed"
 
 
 async def test_client_closed_on_success(
@@ -199,6 +234,7 @@ async def test_client_closed_on_success(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -260,6 +296,7 @@ async def test_repair_issue_dismissed_on_success(
     success_client = MagicMock()
     success_client.login = AsyncMock()
     success_client.close = AsyncMock()
+    success_client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     success_client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
 
     with patch(PATCH_CLIENT, return_value=success_client):
@@ -289,6 +326,7 @@ async def test_first_import_fetches_90_days(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -313,6 +351,7 @@ async def test_incremental_import_fetches_7_days(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -340,6 +379,7 @@ async def test_statistics_values_correct(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -375,6 +415,7 @@ async def test_cost_statistics_inserted(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with patch(PATCH_CLIENT, return_value=client):
@@ -415,6 +456,7 @@ async def test_statistics_failure_does_not_break_sensors(
     client = MagicMock()
     client.login = AsyncMock()
     client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
     client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
 
     with (
@@ -429,3 +471,126 @@ async def test_statistics_failure_does_not_break_sensors(
 
     assert coordinator.last_update_success
     assert MOCK_CONTRACT_NUMBER in coordinator.data
+
+
+async def test_statistics_read_error_falls_back_to_full_import(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data_list,
+) -> None:
+    """If existing statistics can't be read, the full history is fetched again."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data_list)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        client.get_daily_consumption.reset_mock()
+        with patch(
+            "custom_components.eauidf.coordinator.get_last_statistics",
+            side_effect=HomeAssistantError("recorder unavailable"),
+        ):
+            await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    call_kwargs = client.get_daily_consumption.call_args.kwargs
+    today = datetime.now(UTC).date()
+    assert call_kwargs["start_date"] == today - timedelta(
+        days=HISTORY_DAYS_FIRST_IMPORT
+    )
+
+
+async def test_one_contract_failure_keeps_other_contracts(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data,
+) -> None:
+    """A contract that fails to fetch does not prevent the others from updating."""
+    broken = {"id": "CONTRACT_BROKEN", "number": "7654321"}
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry,
+        data={**mock_config_entry.data, CONF_CONTRACTS: [*MOCK_CONTRACTS, broken]},
+    )
+
+    async def get_daily_consumption(**kwargs):
+        if kwargs["contract"].contract_id == broken["id"]:
+            msg = "contract unavailable"
+            raise EauIDFError(msg)
+        return mock_consumption_data
+
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(side_effect=get_daily_consumption)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert MOCK_CONTRACT_NUMBER in coordinator.data
+    assert broken["number"] not in coordinator.data
+
+
+async def test_session_reused_across_updates(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data,
+) -> None:
+    """One dedicated session is created per coordinator and left to HA to clean up."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
+    session = MagicMock()
+    session.close = AsyncMock()
+
+    with (
+        patch(PATCH_CLIENT, return_value=client),
+        patch(
+            "custom_components.eauidf.coordinator.async_create_clientsession",
+            return_value=session,
+        ) as create_session,
+    ):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+        await coordinator.async_refresh()
+
+    create_session.assert_called_once()
+    session.close.assert_not_awaited()
+
+
+async def test_empty_contract_list_keeps_stored_contracts(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data,
+) -> None:
+    """An empty contract list is treated as a failed update, not as all closed."""
+    mock_config_entry.add_to_hass(hass)
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=[])
+    client.get_daily_consumption = AsyncMock(return_value=mock_consumption_data)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert coordinator.last_exception.translation_key == "update_failed"
+    assert mock_config_entry.data[CONF_CONTRACTS] == MOCK_CONTRACTS

@@ -151,7 +151,7 @@ If your credentials expire, Home Assistant will prompt you to re-authenticate th
 
 If your account has multiple active contracts (e.g. multiple properties), each contract gets its own device with its own set of sensors. All contracts are fetched in a single update cycle. If one contract fails to fetch, the others will still update — check **Settings > System > Logs** and filter by `eauidf` for details.
 
-When a contract is no longer linked to your account, its device and sensors are removed automatically the next time the integration starts. Devices left over from pre-release versions (before v1.0.0), which identified contracts differently, are removed the same way. A device that does not match a current contract can also be deleted manually from its device page.
+The contract list is refreshed at every update (every 6 hours), without restarting Home Assistant: a contract added to your account gets its device and sensors automatically, and a contract no longer linked to your account has its device and sensors removed. Devices left over from pre-release versions (before v1.0.0), which identified contracts differently, are removed when the integration starts. A device that does not match a current contract can also be deleted manually from its device page.
 
 ## Troubleshooting
 
