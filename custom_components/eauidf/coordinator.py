@@ -53,6 +53,34 @@ CONSECUTIVE_FAILURE_THRESHOLD = 3
 ISSUE_ID_PERSISTENT_FAILURE = "persistent_update_failure"
 HISTORY_DAYS_FIRST_IMPORT = 90
 HISTORY_DAYS_INCREMENTAL = 7
+# Signature shared by the server-side NullPointerExceptions SEDIF raises from
+# LTN015_ICL_ContratConsoHisto.getData when it cannot build the requested
+# history window. The inner frame varies (getHistoriqueIndex2 when the start
+# is on or before the first reading, convertConsommationToWrapper when the
+# window is longer than the backend accepts), so only the outer call and the
+# exception type are matched.
+HISTORY_NULL_ERROR_MARKERS = (
+    "LTN015_ICL_ContratConsoHisto.getData failed",
+    "System.NullPointerException",
+)
+
+
+def is_history_null_error(err: Exception) -> bool:
+    """
+    Return whether an error is a SEDIF history NullPointerException.
+
+    The backend crashes with a server-side NullPointerException instead of
+    returning an empty or clamped window when the requested range cannot be
+    served. Two causes are known, both monotonic in the start date:
+
+    - the start date is on or before the contract's first reading, which
+      happens on meters with less history than the requested depth
+      (TimoPtr/ha_eauidf#44);
+    - the window is longer than the backend accepts, somewhere between 91 and
+      180 days.
+    """
+    message = str(err)
+    return all(marker in message for marker in HISTORY_NULL_ERROR_MARKERS)
 
 
 def is_current_contract_device(entry: ConfigEntry, device: dr.DeviceEntry) -> bool:
@@ -365,10 +393,11 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         for contract in contracts:
             number = contract.number
             try:
-                data = await client.get_daily_consumption(
-                    contract=contract,
-                    start_date=start_date,
-                    end_date=end,
+                data = await SedifCoordinator._fetch_contract(
+                    client,
+                    contract,
+                    start_date,
+                    end,
                 )
                 if data.records:
                     all_data[number] = data
@@ -403,3 +432,67 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             msg = "Failed to fetch data for any contract"
             raise EauIDFError(msg)
         return sensor_data, all_data
+
+    @staticmethod
+    async def _fetch_contract(
+        client: EauIDFClient,
+        contract: Contract,
+        start_date: date,
+        end_date: date,
+    ) -> ConsumptionData:
+        """
+        Fetch a contract's consumption, clamping the start to what SEDIF serves.
+
+        The backend rejects a start date on or before the meter's first
+        reading, and any window longer than it accepts, with a server-side
+        NullPointerException (see is_history_null_error). Binary-search the
+        earliest start the backend accepts so the available history is
+        imported instead of failing the contract. Days before the clamped
+        start are not imported. See TimoPtr/ha_eauidf#44.
+        """
+        try:
+            return await client.get_daily_consumption(
+                contract=contract,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except EauIDFError as err:
+            if not is_history_null_error(err):
+                raise
+
+        # start_date is rejected (known failure). Find the earliest start the
+        # backend accepts between it and end_date, keeping as much history as
+        # possible. Span is at least 1 since start_date predates end_date.
+        fail_offset = 0
+        good_offset = (end_date - start_date).days
+        # A single-day window at end_date establishes a known-good upper bound;
+        # if even that is rejected there is nothing narrower to fall back to.
+        result = await client.get_daily_consumption(
+            contract=contract,
+            start_date=end_date,
+            end_date=end_date,
+        )
+
+        while good_offset - fail_offset > 1:
+            mid_offset = (fail_offset + good_offset) // 2
+            mid_start = start_date + timedelta(days=mid_offset)
+            try:
+                result = await client.get_daily_consumption(
+                    contract=contract,
+                    start_date=mid_start,
+                    end_date=end_date,
+                )
+            except EauIDFError as err:
+                if not is_history_null_error(err):
+                    raise
+                fail_offset = mid_offset
+            else:
+                good_offset = mid_offset
+
+        _LOGGER.warning(
+            "SEDIF rejected history for contract %s from %s; importing from %s",
+            contract.number,
+            start_date,
+            start_date + timedelta(days=good_offset),
+        )
+        return result

@@ -113,6 +113,8 @@ The integration imports historical water consumption data as **external statisti
 
 On first setup, up to **90 days** of history are imported. After that, only the last 7 days are fetched on each update cycle, keeping the statistics up to date without redundant API calls. Estimated readings are excluded from statistics to avoid double-counting when the actual value is published later.
 
+The SEDIF backend rejects history requests that start on or before the meter's first reading, and requests spanning more than roughly 90 days. When that happens the integration narrows the request to the earliest start the backend accepts and logs a warning. On a meter with less than 90 days of history this imports everything available; after an outage longer than the window limit, the days the backend refuses are not imported.
+
 Two external statistics are created per contract:
 
 | Statistic | Unit | Description |
@@ -144,7 +146,7 @@ If your credentials expire, Home Assistant will prompt you to re-authenticate th
 ## Requirements
 
 - A SEDIF customer account at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr)
-- Home Assistant 2026.3.0 or newer (might work on older version but not tested)
+- Home Assistant 2026.9.0 or newer
 - The [pyeauidf](https://github.com/TimoPtr/pyeauidf) Python library ([PyPI](https://pypi.org/project/pyeauidf/), installed automatically)
 
 ## Multi-contract support
@@ -159,3 +161,4 @@ The contract list is refreshed at every update (every 6 hours), without restarti
 - **"No active contracts"** — Your account exists but has no active water contracts associated with it
 - **"Unable to connect"** — The SEDIF portal may be temporarily down; check again later
 - **Sensors show "unavailable"** — A temporary API error occurred; the integration will retry on the next 6-hour cycle
+- **"SEDIF rejected history for contract … importing from …" in the log** — The requested history window was refused by the portal (see [Energy Dashboard](#energy-dashboard)); statistics start at the date shown

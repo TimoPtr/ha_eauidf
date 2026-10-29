@@ -21,6 +21,7 @@ from custom_components.eauidf.coordinator import (
     ISSUE_ID_PERSISTENT_FAILURE,
     ContractData,
     SedifCoordinator,
+    is_history_null_error,
 )
 from tests.conftest import (
     MOCK_ACTIVE_CONTRACTS,
@@ -594,3 +595,215 @@ async def test_empty_contract_list_keeps_stored_contracts(
     assert not coordinator.last_update_success
     assert coordinator.last_exception.translation_key == "update_failed"
     assert mock_config_entry.data[CONF_CONTRACTS] == MOCK_CONTRACTS
+
+
+# Server-side NullPointerException raised by SEDIF's getHistoriqueIndex2 when
+# the requested start date is on or before the contract's first reading.
+# See TimoPtr/ha_eauidf#44.
+HISTORY_NULL_ERROR = (
+    "LTN015_ICL_ContratConsoHisto.getData failed: "
+    "[{'exceptionType': 'System.NullPointerException', "
+    "'isUserDefinedException': False, "
+    "'message': 'Attempt to de-reference a null object', "
+    "'stackTrace': 'Class.WS020_SE_GestionIndex.getHistoriqueIndex2: "
+    "line 579, column 1\\n"
+    "Class.LTN015_ICL_ContratConsoHisto.getData: line 188, column 1'}]"
+)
+# Same crash from a different inner frame, raised when the requested window is
+# longer than the backend accepts (observed from 180 days; 91 days works).
+HISTORY_WINDOW_ERROR = (
+    "LTN015_ICL_ContratConsoHisto.getData failed: "
+    "[{'exceptionType': 'System.NullPointerException', "
+    "'isUserDefinedException': False, "
+    "'message': 'Attempt to de-reference a null object', "
+    "'stackTrace': 'Class.LTN015_ICL_ContratConsoHisto."
+    "convertConsommationToWrapper: line 508, column 1\\n"
+    "Class.LTN015_ICL_ContratConsoHisto.getData: line 293, column 1'}]"
+)
+
+
+def test_is_history_null_error_matches_both_shapes() -> None:
+    """Both known SEDIF history NullPointerExceptions are recognised."""
+    assert is_history_null_error(EauIDFError(HISTORY_NULL_ERROR))
+    assert is_history_null_error(EauIDFError(HISTORY_WINDOW_ERROR))
+
+
+def test_is_history_null_error_requires_full_signature() -> None:
+    """A NullPointerException from elsewhere does not trigger the retry."""
+    assert not is_history_null_error(EauIDFError("System.NullPointerException"))
+    assert not is_history_null_error(
+        EauIDFError(
+            "LTN008_ICL_ContratDetails.getContratDetails failed: "
+            "[{'exceptionType': 'System.NullPointerException'}]"
+        )
+    )
+    assert not is_history_null_error(
+        EauIDFError("LTN015_ICL_ContratConsoHisto.getData failed: timeout")
+    )
+    assert not is_history_null_error(EauIDFError("contract unavailable"))
+
+
+async def test_history_start_error_clamps_to_first_reading(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_consumption_data,
+) -> None:
+    """A meter with less history than requested still imports its data.
+
+    SEDIF rejects a start date at or before the first reading with a
+    server-side NullPointerException. The coordinator must clamp the start to
+    the earliest accepted date instead of failing. See TimoPtr/ha_eauidf#44.
+    """
+    mock_config_entry.add_to_hass(hass)
+    today = datetime.now(UTC).date()
+    # Any start on or before the first reading is rejected; later ones succeed.
+    first_reading = today - timedelta(days=15)
+    accepted_starts: list[date] = []
+
+    async def get_daily_consumption(**kwargs):
+        start_date = kwargs["start_date"]
+        if start_date <= first_reading:
+            raise EauIDFError(HISTORY_NULL_ERROR)
+        accepted_starts.append(start_date)
+        return mock_consumption_data
+
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(side_effect=get_daily_consumption)
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert MOCK_CONTRACT_NUMBER in coordinator.data
+    # The import is clamped to the first reading, keeping all available history.
+    assert min(accepted_starts) == first_reading + timedelta(days=1)
+
+
+async def test_history_start_error_fails_when_no_window_works(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """When even the narrowest window is rejected, the contract fetch fails."""
+    mock_config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(
+        side_effect=EauIDFError(HISTORY_NULL_ERROR)
+    )
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    # Initial request plus the single-day probe, both rejected.
+    assert client.get_daily_consumption.await_count == 2
+
+
+async def test_other_errors_are_not_retried(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """Non history-start errors fail the contract without retrying."""
+    mock_config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.login = AsyncMock()
+    client.close = AsyncMock()
+    client.get_active_contracts = AsyncMock(return_value=MOCK_ACTIVE_CONTRACTS)
+    client.get_daily_consumption = AsyncMock(
+        side_effect=EauIDFError("contract unavailable")
+    )
+
+    with patch(PATCH_CLIENT, return_value=client):
+        coordinator = SedifCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+    assert client.get_daily_consumption.await_count == 1
+
+
+async def test_fetch_contract_returns_earliest_accepted_data() -> None:
+    """The binary search returns the data from the earliest accepted start."""
+    end = date(2026, 10, 29)
+    start = end - timedelta(days=HISTORY_DAYS_FIRST_IMPORT)
+    first_reading = date(2026, 10, 14)
+    accepted_starts: list[date] = []
+
+    def data_for(start_date: date):
+        return make_consumption_data([make_consumption_record(start_date, 100.0, 10.0)])
+
+    async def get_daily_consumption(**kwargs):
+        start_date = kwargs["start_date"]
+        if start_date <= first_reading:
+            raise EauIDFError(HISTORY_NULL_ERROR)
+        accepted_starts.append(start_date)
+        return data_for(start_date)
+
+    client = MagicMock()
+    client.get_daily_consumption = AsyncMock(side_effect=get_daily_consumption)
+
+    result = await SedifCoordinator._fetch_contract(
+        client, MOCK_ACTIVE_CONTRACTS[0], start, end
+    )
+
+    earliest = first_reading + timedelta(days=1)
+    assert result.records[0].date.date() == earliest
+    assert min(accepted_starts) == earliest
+
+
+async def test_fetch_contract_probe_other_error_propagates() -> None:
+    """A non history-start error while probing propagates immediately."""
+    end = date(2026, 10, 29)
+    start = end - timedelta(days=HISTORY_DAYS_FIRST_IMPORT)
+
+    async def get_daily_consumption(**kwargs):
+        if kwargs["start_date"] == start:
+            raise EauIDFError(HISTORY_NULL_ERROR)
+        msg = "backend exploded"
+        raise EauIDFError(msg)
+
+    client = MagicMock()
+    client.get_daily_consumption = AsyncMock(side_effect=get_daily_consumption)
+
+    with pytest.raises(EauIDFError, match="backend exploded"):
+        await SedifCoordinator._fetch_contract(
+            client, MOCK_ACTIVE_CONTRACTS[0], start, end
+        )
+
+    # Initial attempt plus the probe, which failed with a different error.
+    assert client.get_daily_consumption.await_count == 2
+
+
+async def test_fetch_contract_retry_other_error_propagates() -> None:
+    """A non history-start error during the binary search propagates."""
+    end = date(2026, 10, 29)
+    start = end - timedelta(days=HISTORY_DAYS_FIRST_IMPORT)
+    data = make_consumption_data([make_consumption_record(end, 100.0, 10.0)])
+
+    async def get_daily_consumption(**kwargs):
+        start_date = kwargs["start_date"]
+        if start_date == start:
+            raise EauIDFError(HISTORY_NULL_ERROR)
+        if start_date == end:
+            return data
+        msg = "backend exploded"
+        raise EauIDFError(msg)
+
+    client = MagicMock()
+    client.get_daily_consumption = AsyncMock(side_effect=get_daily_consumption)
+
+    with pytest.raises(EauIDFError, match="backend exploded"):
+        await SedifCoordinator._fetch_contract(
+            client, MOCK_ACTIVE_CONTRACTS[0], start, end
+        )
