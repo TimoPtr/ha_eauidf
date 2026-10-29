@@ -21,7 +21,7 @@ from custom_components.eauidf.coordinator import (
     ISSUE_ID_PERSISTENT_FAILURE,
     ContractData,
     SedifCoordinator,
-    is_history_start_error,
+    is_history_null_error,
 )
 from tests.conftest import (
     MOCK_ACTIVE_CONTRACTS,
@@ -598,7 +598,7 @@ async def test_empty_contract_list_keeps_stored_contracts(
 
 
 # Server-side NullPointerException raised by SEDIF's getHistoriqueIndex2 when
-# the requested start date is at or before the contract's first reading.
+# the requested start date is on or before the contract's first reading.
 # See TimoPtr/ha_eauidf#44.
 HISTORY_NULL_ERROR = (
     "LTN015_ICL_ContratConsoHisto.getData failed: "
@@ -609,13 +609,38 @@ HISTORY_NULL_ERROR = (
     "line 579, column 1\\n"
     "Class.LTN015_ICL_ContratConsoHisto.getData: line 188, column 1'}]"
 )
+# Same crash from a different inner frame, raised when the requested window is
+# longer than the backend accepts (observed from 180 days; 91 days works).
+HISTORY_WINDOW_ERROR = (
+    "LTN015_ICL_ContratConsoHisto.getData failed: "
+    "[{'exceptionType': 'System.NullPointerException', "
+    "'isUserDefinedException': False, "
+    "'message': 'Attempt to de-reference a null object', "
+    "'stackTrace': 'Class.LTN015_ICL_ContratConsoHisto."
+    "convertConsommationToWrapper: line 508, column 1\\n"
+    "Class.LTN015_ICL_ContratConsoHisto.getData: line 293, column 1'}]"
+)
 
 
-def test_is_history_start_error_matches_null_pointer() -> None:
-    """The SEDIF getHistoriqueIndex2 NullPointerException is recognised."""
-    assert is_history_start_error(EauIDFError(HISTORY_NULL_ERROR))
-    assert is_history_start_error(EauIDFError("System.NullPointerException"))
-    assert not is_history_start_error(EauIDFError("contract unavailable"))
+def test_is_history_null_error_matches_both_shapes() -> None:
+    """Both known SEDIF history NullPointerExceptions are recognised."""
+    assert is_history_null_error(EauIDFError(HISTORY_NULL_ERROR))
+    assert is_history_null_error(EauIDFError(HISTORY_WINDOW_ERROR))
+
+
+def test_is_history_null_error_requires_full_signature() -> None:
+    """A NullPointerException from elsewhere does not trigger the retry."""
+    assert not is_history_null_error(EauIDFError("System.NullPointerException"))
+    assert not is_history_null_error(
+        EauIDFError(
+            "LTN008_ICL_ContratDetails.getContratDetails failed: "
+            "[{'exceptionType': 'System.NullPointerException'}]"
+        )
+    )
+    assert not is_history_null_error(
+        EauIDFError("LTN015_ICL_ContratConsoHisto.getData failed: timeout")
+    )
+    assert not is_history_null_error(EauIDFError("contract unavailable"))
 
 
 async def test_history_start_error_clamps_to_first_reading(
