@@ -144,7 +144,7 @@ If your credentials expire, Home Assistant will prompt you to re-authenticate th
 ## Requirements
 
 - A SEDIF customer account at [connexion.leaudiledefrance.fr](https://connexion.leaudiledefrance.fr)
-- Home Assistant 2026.3.0 or newer (might work on older version but not tested)
+- Home Assistant 2026.9.0 or newer
 - The [pyeauidf](https://github.com/TimoPtr/pyeauidf) Python library ([PyPI](https://pypi.org/project/pyeauidf/), installed automatically)
 
 ## Multi-contract support
