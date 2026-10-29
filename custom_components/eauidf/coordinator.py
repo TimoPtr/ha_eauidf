@@ -53,6 +53,22 @@ CONSECUTIVE_FAILURE_THRESHOLD = 3
 ISSUE_ID_PERSISTENT_FAILURE = "persistent_update_failure"
 HISTORY_DAYS_FIRST_IMPORT = 90
 HISTORY_DAYS_INCREMENTAL = 7
+# Markers of the SEDIF getHistoriqueIndex2 server-side NullPointerException,
+# raised when the requested start date is at or before the first reading.
+HISTORY_START_ERROR_MARKERS = ("getHistoriqueIndex2", "NullPointerException")
+
+
+def is_history_start_error(err: Exception) -> bool:
+    """
+    Return whether an error is the SEDIF history-start NullPointerException.
+
+    The backend's getHistoriqueIndex2 raises a server-side NullPointerException
+    when the requested start date is at or before the contract's first reading,
+    which happens on meters with less than the requested history depth.
+    See TimoPtr/ha_eauidf#44.
+    """
+    message = str(err)
+    return any(marker in message for marker in HISTORY_START_ERROR_MARKERS)
 
 
 def is_current_contract_device(entry: ConfigEntry, device: dr.DeviceEntry) -> bool:
@@ -365,10 +381,11 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
         for contract in contracts:
             number = contract.number
             try:
-                data = await client.get_daily_consumption(
-                    contract=contract,
-                    start_date=start_date,
-                    end_date=end,
+                data = await SedifCoordinator._fetch_contract(
+                    client,
+                    contract,
+                    start_date,
+                    end,
                 )
                 if data.records:
                     all_data[number] = data
@@ -403,3 +420,66 @@ class SedifCoordinator(DataUpdateCoordinator[SedifData]):
             msg = "Failed to fetch data for any contract"
             raise EauIDFError(msg)
         return sensor_data, all_data
+
+    @staticmethod
+    async def _fetch_contract(
+        client: EauIDFClient,
+        contract: Contract,
+        start_date: date,
+        end_date: date,
+    ) -> ConsumptionData:
+        """
+        Fetch a contract's consumption, clamping the start to the first reading.
+
+        Meters with less history than the requested depth make SEDIF reject a
+        start date at or before their first reading with a server-side
+        NullPointerException. Binary-search the earliest start the backend
+        accepts so the full available history is imported instead of failing
+        the contract or losing early days. See TimoPtr/ha_eauidf#44.
+        """
+        try:
+            return await client.get_daily_consumption(
+                contract=contract,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except EauIDFError as err:
+            if not is_history_start_error(err):
+                raise
+
+        # start_date is too early (known failure). Find the earliest start the
+        # backend accepts between it and end_date, keeping as much history as
+        # possible. Span is at least 1 since start_date predates end_date.
+        fail_offset = 0
+        good_offset = (end_date - start_date).days
+        # A single-day window at end_date establishes a known-good upper bound;
+        # if even that is rejected there is nothing narrower to fall back to.
+        result = await client.get_daily_consumption(
+            contract=contract,
+            start_date=end_date,
+            end_date=end_date,
+        )
+
+        while good_offset - fail_offset > 1:
+            mid_offset = (fail_offset + good_offset) // 2
+            mid_start = start_date + timedelta(days=mid_offset)
+            try:
+                result = await client.get_daily_consumption(
+                    contract=contract,
+                    start_date=mid_start,
+                    end_date=end_date,
+                )
+            except EauIDFError as err:
+                if not is_history_start_error(err):
+                    raise
+                fail_offset = mid_offset
+            else:
+                good_offset = mid_offset
+
+        _LOGGER.debug(
+            "History for %s rejected start %s; clamped to %s",
+            contract.number,
+            start_date,
+            start_date + timedelta(days=good_offset),
+        )
+        return result
